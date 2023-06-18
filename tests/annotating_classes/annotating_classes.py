@@ -143,3 +143,93 @@ def test_signatures_of_function_type() -> None:
 				 * @param {boolean} lolskiy - 
 				 */
 		''') in fmt(annotate.annotate_class(class_five))
+
+
+class_six = '''
+export class TestClassTwo {
+		
+	setSelects(fun: (a: number, b: string, c: PermissionSettingsDTO<Permission>) => Promise<void>): void {
+		this.roleConditionOptions = selects.rolesConditions;
+	this.lifecycleStatesOptions = selects.lifecycles;
+	}
+	
+	setSelects2(fun: (a: number, b: string, c: PermissionSettingsDTO<Permission>) => string[]): void {
+		this.roleConditionOptions = selects.rolesConditions;
+	this.lifecycleStatesOptions = selects.lifecycles;
+	}
+	
+	setSelects3(
+		fun: (a: number, b: string, c: PermissionSettingsDTO<Permission>) => string[],
+		funny: () => VeryVeryLongTypePermissionSettingsDTO
+	): void {
+		this.roleConditionOptions = selects.rolesConditions;
+		this.lifecycleStatesOptions = selects.lifecycles;
+	}
+	
+	setSelects4(
+		a: number, 
+		b: string, 
+		funny: (make: string) => PermissionSettingsDT2O[], 
+		c: PermissionSettingsDTO<Permission>
+	): void {
+        this.roleConditionOptions = selects.rolesConditions;
+        this.lifecycleStatesOptions = selects.lifecycles;
+    }
+    
+    setSelects5(a: number, funny: (make: string) => Ppt[], c: PermissionSettingsDTO<Permission>): void {
+        this.roleConditionOptions = selects.rolesConditions;
+        this.lifecycleStatesOptions = selects.lifecycles;
+    }
+}
+'''
+
+
+def test_method_promise_void_return_type() -> None:
+	assert fmt('''
+			     /**
+     * Описание метода
+     * @param {(a: number, b: string, c: PermissionSettingsDTO<Permission>) => Promise<void>} fun - 
+     */ setSelects
+		''') in fmt(annotate.annotate_class(class_six))
+
+
+def test_method_string_array_return_type() -> None:
+	assert fmt('''
+	  /**
+     * Описание метода
+     * @param {(a: number, b: string, c: PermissionSettingsDTO<Permission>) => string[]} fun - 
+     */ setSelects2
+		''') in fmt(annotate.annotate_class(class_six))
+
+
+def test_method_line_breaking() -> None:
+	assert fmt('''
+	    /**
+     * Описание метода
+     * @param {(a: number, b: string, c: PermissionSettingsDTO<Permission>) => string[]} fun -
+     * @param {() => VeryVeryLongTypePermissionSettingsDTO} funny -
+     */setSelects3
+		''') in fmt(annotate.annotate_class(class_six))
+
+
+def test_method_line_breaking_when_func_between_primitives() -> None:
+	assert fmt('''
+	     /**
+     * Описание метода
+     * @param {(make: string) => PermissionSettingsDT2O[]} funny - 
+     * @param {number} a - 
+     * @param {string} b - 
+     * @param {PermissionSettingsDTO<Permission>} c - 
+     */setSelects4
+		''') in fmt(annotate.annotate_class(class_six))
+
+
+def test_method_line_breaking_when_func_between_primitives_in_one_line() -> None:
+	assert fmt('''
+	     /**
+     * Описание метода
+     * @param {(make: string) => PermissionSettingsDT2O[]} funny - 
+     * @param {number} a - 
+     * @param {PermissionSettingsDTO<Permission>} c - 
+     */setSelects5
+		''') in fmt(annotate.annotate_class(class_six))

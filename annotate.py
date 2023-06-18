@@ -24,7 +24,7 @@ method_params_pattern = r"(?<=\()[^\/]+(?=\):)"
 method_param_type_pattern = r"(?<=:\s).+"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
-func_type_param_pattern = r'\w+:\s\([^/]*\)\s=>\s\w+'
+func_type_param_pattern = r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?'
 
 delimiter: str = "%%%%"
 
