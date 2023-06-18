@@ -115,9 +115,12 @@ def annotate_component(content: str) -> str:
 	for component in components:
 		component_name_found = re.search(
 			component_name_pattern, str(component)).group()
-		content = content.replace(
-			component,
-			f"/**\n * Описание компонента\n * @param props {{@link {component_name_found}Props}}\n */\n{component}")
+		component_with_description: str = f"/**\n * Описание компонента\n"
+		if re.search(fr"\b{component_name_found}Props", content):
+			component_with_description += f" * @param props {{@link {component_name_found}Props}}\n */\n{component}"
+		else:
+			component_with_description += f" */\n{component}"
+		content = content.replace(component, component_with_description)
 	return content
 
 
