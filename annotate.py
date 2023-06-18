@@ -17,9 +17,9 @@ class_name_pattern = r"(?<=class\s)\w+"
 class_constructor_pattern = r"[^\n]+constructor\([^}]*\)\s{[^}]*}"
 class_constructor_params_pattern = r"(?<=\()[^}]+(?=\)\s)"
 
-class_method_pattern = r"\w+\s?\w+\(.*\):[^=\n]*?{"
+class_method_pattern = r"\w+\s?\w+\([^}]*\):[^=\n]*?{"
 class_method_name_pattern = r"\w+(?=\()"
-method_params_pattern = r"(?<=\().+,?(?=\):)"
+method_params_pattern = r"(?<=\()[^\/]+(?=\):)"
 method_param_type_pattern = r"(?<=:\s).+"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
@@ -36,13 +36,21 @@ def detect_if_was_documented(is_pristine: bool, content: str) -> bool:
 def annotate_params(method_params: "list[str]"):
 	params_text = ""
 	for params in method_params:
-		if ", " in params:
-			parameters = params.split(", ")
+		generics: list[str] = re.findall(r'<.+>', params)
+		if "," in params:
+			parameters = params.split(",")
 			for param in parameters:
+				print(param + "\n")
 				param_type = re.findall(method_param_type_pattern, param)
 				param_name = re.findall(method_param_name_pattern, param)
 				if len(param_type) > 0 and len(param_name) > 0:
-					params_text += f"     * @param {{{param_type[0]}}} {param_name[0].replace('?', '')} - \n"
+					type_of_param = param_type[0]
+					name_of_param = param_name[0].replace('?', '')
+					for generic in generics:
+						type_without_generics = re.sub(r"<\w+>?", "", param_type[0])
+						if type_without_generics + generic in params:
+							type_of_param = type_without_generics + generic
+					params_text += f"     * @param {{{type_of_param}}} {name_of_param} - \n"
 		else:
 			param_type = re.findall(method_param_type_pattern, params)
 			param_name = re.findall(method_param_name_pattern, params)
@@ -53,25 +61,24 @@ def annotate_params(method_params: "list[str]"):
 
 def annotate_class(content: str) -> str:
 	ts_classes: list[str] = re.findall(ts_class_pattern, content)
-	print()
 	for ts_class in ts_classes:
 		content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
 
-		class_constructor: str = re.findall(class_constructor_pattern, ts_class)[0]
+		class_constructor: list[str] = re.findall(class_constructor_pattern, ts_class)
 		if class_constructor:
 			class_constructor_params = re.findall(
-			    class_constructor_params_pattern, class_constructor)
+				class_constructor_params_pattern, class_constructor[0])
 			if len(class_constructor_params) > 0:
 				constructor_annot_text = f'    /**\n{annotate_params(class_constructor_params)}     */\n'
 				content = content.replace(
-				    class_constructor, constructor_annot_text + class_constructor)
+					class_constructor[0], constructor_annot_text + class_constructor[0])
 
 		class_methods: list[str] = re.findall(class_method_pattern, ts_class)
 		for class_method in class_methods:
 			method_params = re.findall(method_params_pattern, class_method)
 			params_annot_text = f"/**\n     * Описание метода\n{annotate_params(method_params)}     */\n"
 			content = content.replace(
-			    class_method, params_annot_text + "    " + class_method)
+				class_method, params_annot_text + "    " + class_method)
 			params_annot_text = ""
 
 	return content
@@ -136,7 +143,6 @@ def annotate_type(content: str) -> str:
 
 			if type_name:
 				type_declaration = f"{'export type' if 'export type' in content else 'type'} {type_name.group()}"
-				print(type_declaration + " =" in content)
 				content = content.replace(type_declaration + " =", annotation_text + type_declaration + " =")
 
 	return content
@@ -219,4 +225,4 @@ else:
 	print(
 		f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
-# TODO: Тесты, научить работать с методами, где аргументы перенесены по строкам.
+# TODO: детектить не весь документ. а документы отд. методов, сигнатуры типов функций
