@@ -42,41 +42,47 @@ def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str
 	param_type) > 0 and len(param_name) > 0
 
 
-def get_type_and_name(pat: Dict[str, str], string_from: str) -> [str or None, str or None]:
-	param_type = re.findall(pat["name"], string_from)
-	param_name = re.findall(pat["type"], string_from)
-	return [param_type, param_name]
+def get_type_and_name(pat: Dict[str, str], string_from: str) -> [str or None, str or None, bool]:
+	param_type = re.findall(pat["type"], string_from)
+	param_name = re.findall(pat["name"], string_from)
+	if we_have_name_and_type(param_name, param_type):
+		return [param_type[0], param_name[0].replace('?', ''), True]
+	else:
+		return [None, None, False]
 
 
-def annotate_params(method_params: "list[str]"):
+def get_parameter_injected(param_type: str, param_name: str) -> str:
+	return f"     * @param {{{param_type}}} {param_name} - \n"
+
+
+def annotate_params(method_params: "list[str]") -> str:
 	params_text = ""
 	for line_of_methods_params in method_params:
-
 		for func_type in re.findall(func_type_param_pattern, line_of_methods_params):
 			parameter_of_func_type = re.sub(r":\s\(", delimiter + "(", func_type)
 			func_param_name = parameter_of_func_type.split(delimiter)[0]
 			func_param_type = parameter_of_func_type.split(delimiter)[1]
-			params_text += f"     * @param {{{func_param_type}}} {func_param_name} - \n"
+			params_text += get_parameter_injected(func_param_type, func_param_name)
 			line_of_methods_params = line_of_methods_params.replace(func_type, "")
 		if "," in line_of_methods_params:
-			parameters = line_of_methods_params.split(",")
-			for param in parameters:
-				param_type = re.findall(method_param_type_pattern, param)
-				param_name = re.findall(method_param_name_pattern, param)
-				if we_have_name_and_type(param_name, param_type):
-					type_of_param = param_type[0]
-					name_of_param = param_name[0].replace('?', '')
+			for param in line_of_methods_params.split(","):
+				type_of_param, name_of_param, name_and_type_found = get_type_and_name({
+					"name": method_param_name_pattern,
+					"type": method_param_type_pattern
+				}, param)
+				if name_and_type_found:
 					for generic in re.findall(r'<.+>', line_of_methods_params):
-						type_without_generics = re.sub(r"<\w+>?", "", param_type[0])
+						type_without_generics = re.sub(r"<\w+>?", "", type_of_param)
 						if type_without_generics + generic in line_of_methods_params:
 							type_of_param = type_without_generics + generic
-					params_text += f"     * @param {{{type_of_param}}} {name_of_param} - \n"
+					params_text += get_parameter_injected(type_of_param, name_of_param)
 		else:
-			param_type = re.findall(method_param_type_pattern, line_of_methods_params)
-			param_name = re.findall(method_param_name_pattern, line_of_methods_params)
-			if we_have_name_and_type(param_name, param_type):
-				params_text += f"     * @param {{{param_type[0]}}} {param_name[0].replace('?', '')} - \n"
-	print(params_text)
+			type_of_param, name_of_param, name_and_type_found = get_type_and_name({
+				"name": method_param_name_pattern,
+				"type": method_param_type_pattern
+			}, line_of_methods_params)
+			if name_and_type_found:
+				params_text += get_parameter_injected(type_of_param, name_of_param)
 	return params_text
 
 
@@ -112,7 +118,6 @@ def annotate_component(content: str) -> str:
 		content = content.replace(
 			component,
 			f"/**\n * Описание компонента\n * @param props {{@link {component_name_found}Props}}\n */\n{component}")
-
 	return content
 
 
