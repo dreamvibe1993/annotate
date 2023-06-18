@@ -1,6 +1,7 @@
 import re
 import os
 import argparse
+from typing import Dict
 
 component_pattern = r"export\s+const\s\w+\s=.+JSX.Element\s=>\s{"
 component_name_pattern = r"(?<=\s)[A-Z]\w+(?=\s=\s)"
@@ -23,6 +24,10 @@ method_params_pattern = r"(?<=\()[^\/]+(?=\):)"
 method_param_type_pattern = r"(?<=:\s).+"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
+func_type_param_pattern = r'\w+:\s\([^/]*\)\s=>\s\w+'
+
+delimiter: str = "%%%%"
+
 was_documented = False
 
 
@@ -33,29 +38,45 @@ def detect_if_was_documented(is_pristine: bool, content: str) -> bool:
 	return False
 
 
+def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str]" or None) -> bool: return len(
+	param_type) > 0 and len(param_name) > 0
+
+
+def get_type_and_name(pat: Dict[str, str], string_from: str) -> [str or None, str or None]:
+	param_type = re.findall(pat["name"], string_from)
+	param_name = re.findall(pat["type"], string_from)
+	return [param_type, param_name]
+
+
 def annotate_params(method_params: "list[str]"):
 	params_text = ""
-	for params in method_params:
-		generics: list[str] = re.findall(r'<.+>', params)
-		if "," in params:
-			parameters = params.split(",")
+	for line_of_methods_params in method_params:
+
+		for func_type in re.findall(func_type_param_pattern, line_of_methods_params):
+			parameter_of_func_type = re.sub(r":\s\(", delimiter + "(", func_type)
+			func_param_name = parameter_of_func_type.split(delimiter)[0]
+			func_param_type = parameter_of_func_type.split(delimiter)[1]
+			params_text += f"     * @param {{{func_param_type}}} {func_param_name} - \n"
+			line_of_methods_params = line_of_methods_params.replace(func_type, "")
+		if "," in line_of_methods_params:
+			parameters = line_of_methods_params.split(",")
 			for param in parameters:
-				print(param + "\n")
 				param_type = re.findall(method_param_type_pattern, param)
 				param_name = re.findall(method_param_name_pattern, param)
-				if len(param_type) > 0 and len(param_name) > 0:
+				if we_have_name_and_type(param_name, param_type):
 					type_of_param = param_type[0]
 					name_of_param = param_name[0].replace('?', '')
-					for generic in generics:
+					for generic in re.findall(r'<.+>', line_of_methods_params):
 						type_without_generics = re.sub(r"<\w+>?", "", param_type[0])
-						if type_without_generics + generic in params:
+						if type_without_generics + generic in line_of_methods_params:
 							type_of_param = type_without_generics + generic
 					params_text += f"     * @param {{{type_of_param}}} {name_of_param} - \n"
 		else:
-			param_type = re.findall(method_param_type_pattern, params)
-			param_name = re.findall(method_param_name_pattern, params)
-			if len(param_type) > 0 and len(param_name) > 0:
+			param_type = re.findall(method_param_type_pattern, line_of_methods_params)
+			param_name = re.findall(method_param_name_pattern, line_of_methods_params)
+			if we_have_name_and_type(param_name, param_type):
 				params_text += f"     * @param {{{param_type[0]}}} {param_name[0].replace('?', '')} - \n"
+	print(params_text)
 	return params_text
 
 
@@ -80,7 +101,6 @@ def annotate_class(content: str) -> str:
 			content = content.replace(
 				class_method, params_annot_text + "    " + class_method)
 			params_annot_text = ""
-
 	return content
 
 
@@ -225,4 +245,4 @@ else:
 	print(
 		f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
-# TODO: детектить не весь документ. а документы отд. методов, сигнатуры типов функций
+# TODO: детектить не весь документ. а документы отд. методов

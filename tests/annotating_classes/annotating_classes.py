@@ -77,6 +77,16 @@ def test_generics_detection_in_constructor() -> None:
 
 class_four = '''
  export class TestClassTwo {
+	
+	constructor(
+	accessPermissionRequests: AccessPermissionRequests <Permission, PermissionDTO>,
+getPermissionDTO: GetPermissionDTO <Permission, InitialValues, PermissionDTO>,
+) {
+	makeObservable(this, permissionsModelObservables);
+this.accessPermissionRequests = accessPermissionRequests;
+this.getPermissionDTO = getPermissionDTO;
+}
+	
     methodOne(  
         accessPermissionRequests2: AccessPermissionRequests<Permission, PermissionDTO>,
         getPermissionDTO2: GetPermissionDTO<Permission, InitialValues, PermissionDTO>,
@@ -92,23 +102,44 @@ class_four = '''
 '''
 
 
-# constructor(
-# 	accessPermissionRequests: AccessPermissionRequests < Permission, PermissionDTO >,
-# getPermissionDTO: GetPermissionDTO < Permission, InitialValues, PermissionDTO >,
-# ) {
-# 	makeObservable(this, permissionsModelObservables);
-# this.accessPermissionRequests = accessPermissionRequests;
-# this.getPermissionDTO = getPermissionDTO;
-# }
-
 def test_generics_detection_in_method() -> None:
 	assert fmt('''
 		   /**
 			 * Описание метода 
+			 * @param {() => void} weirdFunction - 
 			 * @param {AccessPermissionRequests<Permission, PermissionDTO>} accessPermissionRequests2 - 
 			 * @param {GetPermissionDTO<Permission, InitialValues, PermissionDTO>} getPermissionDTO2 - 
 			 * @param {string} something - 
-			 * @param {() => void} weirdFunction - 
 			 * @param {boolean} lolskiy - 
 			 */
+	''') in fmt(annotate.annotate_class(class_four)) and fmt('''
+		   /**
+ * @param {AccessPermissionRequests<Permission, PermissionDTO>} accessPermissionRequests - 
+ * @param {GetPermissionDTO<Permission, InitialValues, PermissionDTO>} getPermissionDTO - 
+ */
 	''') in fmt(annotate.annotate_class(class_four))
+
+
+class_five = '''
+ export class TestClassTwo {
+	
+    methodOne(  
+		weirdFunction: (one: number, two: string, three: boolean) => void,
+		lolskiy: boolean
+        ): void {
+        console.log()
+    }
+}
+
+
+'''
+
+
+def test_signatures_of_function_type() -> None:
+	assert fmt('''
+			   /**
+				 * Описание метода 
+				 * @param {(one: number, two: string, three: boolean) => void} weirdFunction - 
+				 * @param {boolean} lolskiy - 
+				 */
+		''') in fmt(annotate.annotate_class(class_five))
