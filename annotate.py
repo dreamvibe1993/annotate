@@ -122,7 +122,6 @@ def annotate_functions_and_lambdas(content: str) -> str:
 		params_annot_text = f"/**\n * Описание функции\n{annotate_params(entity_params).replace('     ', ' ')} */\n"
 		replacement_candidate: str = f"export {entity}" if f"export {entity}" in content else entity
 		content = content.replace(replacement_candidate, params_annot_text + replacement_candidate)
-	print(content)
 	return content
 
 
