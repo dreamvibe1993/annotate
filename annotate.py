@@ -276,6 +276,7 @@ else:
 
 # TODO: детектить не весь документ. а документы отд. методов
 # TODO: enums
-# TODO: generics
+# TODO: generics в типах
 # TODO: функции в типах косячат
 # TODO: сохранять форматирование?
+# TODO: interfaces
