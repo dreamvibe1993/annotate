@@ -1,7 +1,7 @@
 import re
 import os
 import argparse
-from typing import Dict
+from typing import Dict, Union
 
 component_pattern = r"export\s+const\s\w+\s=.+JSX.Element\s=>\s{"
 component_name_pattern = r"(?<=\s)[A-Z]\w+(?=\s=\s)"
@@ -18,13 +18,16 @@ class_name_pattern = r"(?<=class\s)\w+"
 class_constructor_pattern = r"[^\n]+constructor\([^}]*\)\s{[^}]*}"
 class_constructor_params_pattern = r"(?<=\()[^}]+(?=\)\s)"
 
-class_method_pattern = r"\w+\s?\w+\([^}]*\):[^=\n]*?{"
+class_method_pattern = r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{"
 class_method_name_pattern = r"\w+(?=\()"
-method_params_pattern = r"(?<=\()[^\/]+(?=\):)"
+method_params_pattern = r"(?<=\()[^};]+?(?=\):)"
 method_param_type_pattern = r"(?<=:\s).+"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
 func_type_param_pattern = r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?'
+
+function_pattern = r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{"
+lambda_pattern = r"const\s\w+\s=\s\([^/]*\).+\s=>\s{"
 
 delimiter: str = "%%%%"
 
@@ -42,7 +45,7 @@ def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str
 	param_type) > 0 and len(param_name) > 0
 
 
-def get_type_and_name(pat: Dict[str, str], string_from: str) -> [str or None, str or None, bool]:
+def get_type_and_name(pat: Dict[str, str], string_from: str) -> Union[str or None, str or None, bool]:
 	param_type = re.findall(pat["type"], string_from)
 	param_name = re.findall(pat["name"], string_from)
 	if we_have_name_and_type(param_name, param_type):
@@ -110,6 +113,19 @@ def annotate_class(content: str) -> str:
 	return content
 
 
+def annotate_functions_and_lambdas(content: str) -> str:
+	lambdas: list[str] = re.findall(lambda_pattern, content)
+	functions: list[str] = re.findall(function_pattern, content)
+	lambdas_and_functions: list[str] = lambdas + functions
+	for entity in lambdas_and_functions:
+		entity_params: list[str] = re.findall(method_params_pattern, entity)
+		params_annot_text = f"/**\n * Описание функции\n{annotate_params(entity_params).replace('     ', ' ')} */\n"
+		replacement_candidate: str = f"export {entity}" if f"export {entity}" in content else entity
+		content = content.replace(replacement_candidate, params_annot_text + replacement_candidate)
+	print(content)
+	return content
+
+
 def annotate_component(content: str) -> str:
 	components: list[str] = re.findall(component_pattern, content)
 	for component in components:
@@ -132,7 +148,6 @@ def add_annot_intersection_types(intersections: "list[str]") -> str:
 	return text
 
 
-# Склеивает функциональный тип из второго и третьего эл. массива
 def join_func_type_or_return_default(prop_parts) -> str:
 	return f"{prop_parts[1]}:{prop_parts[2]}"
 
@@ -206,6 +221,18 @@ def handle_finish(content, file_path, same_flag = False):
 		print(f"Аннотированный файл сохранен как: {annotated_file_path}")
 
 
+def annotate(content) -> str:
+	return annotate_class(
+		annotate_type(
+			annotate_functions_and_lambdas(
+				annotate_component(
+					content
+				)
+			)
+		)
+	)
+
+
 def process_file(file_path, same_flag = False):
 	try:
 		content = parse_file(file_path)
@@ -214,12 +241,7 @@ def process_file(file_path, same_flag = False):
 			if was_documented:
 				raise Exception(f"Файл {file_path} уже был задокументирован. Пропускаю.")
 			else:
-				handle_finish(
-					annotate_class(
-						annotate_type(
-							annotate_component(
-								content
-							))), file_path, same_flag)
+				handle_finish(annotate(content), file_path, same_flag)
 	except Exception as e:
 		print(f"Произошла ошибка при обработке файла '{file_path}': {str(e)}")
 
@@ -242,8 +264,6 @@ args = parser.parse_args()
 path = args.path
 same_flag = args.same
 pristine = args.pristine
-
-print(same_flag, args.same, args)
 
 if os.path.isdir(path):
 	process_directory(path, same_flag)

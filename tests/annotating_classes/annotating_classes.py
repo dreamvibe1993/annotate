@@ -228,7 +228,7 @@ def test_method_line_breaking_when_func_between_primitives_in_one_line() -> None
 	assert fmt('''
 	     /**
      * Описание метода
-     * @param {(make: string) => PermissionSettingsDT2O[]} funny - 
+     * @param {(make: string) => Ppt[]} funny - 
      * @param {number} a - 
      * @param {PermissionSettingsDTO<Permission>} c - 
      */setSelects5
