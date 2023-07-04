@@ -1,4 +1,4 @@
-# 1.4.0
+# 1.5.0
 
 import re
 import os
@@ -32,15 +32,6 @@ function_pattern = r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{"
 lambda_pattern = r"const\s\w+\s=\s\([^/]*\).+\s=>\s{"
 
 delimiter: str = "%%%%"
-
-was_documented = False
-
-
-def detect_if_was_documented(is_pristine: bool, content: str) -> bool:
-	if is_pristine:
-		print("Вы передали флаг -p. Смотрю был ли текущий файл документирован ранее...")
-		return bool(re.search(r"/\*\*", content))
-	return False
 
 
 def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str]" or None) -> bool: return len(
@@ -91,27 +82,38 @@ def annotate_params(method_params: "list[str]") -> str:
 	return params_text
 
 
+def fmt(s: str) -> str:
+	return re.sub(r"[\s\n\t]*", "", s)
+
+
 def annotate_class(content: str) -> str:
 	ts_classes: list[str] = re.findall(ts_class_pattern, content)
 	for ts_class in ts_classes:
-		content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
+		if not bool(re.search(fr"/\*\*.+\*/\n{re.escape(ts_class)}", content)):
+			content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
 
 		class_constructor: list[str] = re.findall(class_constructor_pattern, ts_class)
 		if class_constructor:
 			class_constructor_params = re.findall(
 				class_constructor_params_pattern, class_constructor[0])
 			if len(class_constructor_params) > 0:
-				constructor_annot_text = f'    /**\n{annotate_params(class_constructor_params)}     */\n'
-				content = content.replace(
-					class_constructor[0], constructor_annot_text + class_constructor[0])
+				annotated_method_params = annotate_params(class_constructor_params)
+				is_annotated = fmt(f"{annotated_method_params}") in fmt(ts_class)
+				if not is_annotated:
+					constructor_annot_text = f'    /**\n{annotate_params(class_constructor_params)}     */\n'
+					content = content.replace(
+						class_constructor[0], constructor_annot_text + class_constructor[0])
 
 		class_methods: list[str] = re.findall(class_method_pattern, ts_class)
 		for class_method in class_methods:
 			method_params = re.findall(method_params_pattern, class_method)
-			params_annot_text = f"/**\n     * Описание метода\n{annotate_params(method_params)}     */\n"
-			content = content.replace(
-				class_method, params_annot_text + "    " + class_method)
-			params_annot_text = ""
+			annotated_method_params = annotate_params(method_params)
+			is_annotated = fmt(f"{annotated_method_params}") in fmt(ts_class)
+			print(is_annotated, class_method)
+			if not is_annotated:
+				params_annot_text = f"/**\n     * Описание метода\n{annotated_method_params}     */\n"
+				content = content.replace(
+					class_method, params_annot_text + "    " + class_method)
 	return content
 
 
@@ -223,7 +225,7 @@ def handle_finish(content, file_path, same_flag = False):
 
 
 def annotate(content) -> str:
-	return annotate_class(
+	annotated = annotate_class(
 		annotate_type(
 			annotate_functions_and_lambdas(
 				annotate_component(
@@ -232,17 +234,15 @@ def annotate(content) -> str:
 			)
 		)
 	)
+	# print(annotated)
+	return annotated
 
 
 def process_file(file_path, same_flag = False):
 	try:
 		content = parse_file(file_path)
 		if content is not None:
-			was_documented = detect_if_was_documented(pristine, content)
-			if was_documented:
-				raise Exception(f"Файл {file_path} уже был задокументирован. Пропускаю.")
-			else:
-				handle_finish(annotate(content), file_path, same_flag)
+			handle_finish(annotate(content), file_path, same_flag)
 	except Exception as e:
 		print(f"Произошла ошибка при обработке файла '{file_path}': {str(e)}")
 
@@ -258,13 +258,11 @@ def process_directory(directory_path, same_flag = False):
 parser = argparse.ArgumentParser(
 	description='Аннотирование файлов TSX/TS.')
 parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
-parser.add_argument('-p', '--pristine', action="store_true", help='Аннотировать только неаннотированые файлы')
 parser.add_argument('path', help='Путь к директории или файлу TSX/TS.')
 
 args = parser.parse_args()
 path = args.path
 same_flag = args.same
-pristine = args.pristine
 
 if os.path.isdir(path):
 	process_directory(path, same_flag)
@@ -274,7 +272,6 @@ else:
 	print(
 		f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
-# TODO: детектить не весь документ. а документы отд. методов
 # TODO: enums
 # TODO: generics в типах
 # TODO: функции в типах косячат
