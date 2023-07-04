@@ -109,7 +109,6 @@ def annotate_class(content: str) -> str:
 			method_params = re.findall(method_params_pattern, class_method)
 			annotated_method_params = annotate_params(method_params)
 			is_annotated = fmt(f"{annotated_method_params}") in fmt(ts_class)
-			print(is_annotated, class_method)
 			if not is_annotated:
 				params_annot_text = f"/**\n     * Описание метода\n{annotated_method_params}     */\n"
 				content = content.replace(
@@ -234,7 +233,6 @@ def annotate(content) -> str:
 			)
 		)
 	)
-	# print(annotated)
 	return annotated
 
 
