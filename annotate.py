@@ -1,4 +1,4 @@
-# 1.5.0
+# Не лезь дибил е@аный, она тебя сожрет!
 
 import re
 import os
@@ -86,33 +86,63 @@ def fmt(s: str) -> str:
 	return re.sub(r"[\s\n\t]*", "", s)
 
 
+def find_annotation(string_to_search_for: str, string_to_search_in: str) -> str or None:
+	possible_only_name = re.search(r"\b\w+\b\(", string_to_search_for, flags=re.MULTILINE)
+	only_name = possible_only_name.group(0).replace("(", "") if possible_only_name else string_to_search_for
+	annotations = re.findall(r'^\s*$\n\s+/\*\*\n[^%]+?\*/\n\s+',
+	                         string_to_search_in,
+	                         flags=re.MULTILINE)
+	found: str or None = None
+	for a in annotations:
+		if a + only_name in string_to_search_in:
+			found = a
+			break
+	return found
+
+
+def find_annotation_description(string_to_search_in: str or None) -> str or None:
+	if not string_to_search_in: return None
+	possible_method_description = re.search(r"(?<=\s\*\s)[^@]+?\n", string_to_search_in)
+	return possible_method_description.group(0).strip() if possible_method_description else None
+
+
 def annotate_class(content: str) -> str:
 	ts_classes: list[str] = re.findall(ts_class_pattern, content)
 	for ts_class in ts_classes:
 		if not bool(re.search(fr"/\*\*.+\*/\n{re.escape(ts_class)}", content)):
 			content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
 
-		class_constructor: list[str] = re.findall(class_constructor_pattern, ts_class)
+		class_constructor = re.search(class_constructor_pattern, ts_class)
 		if class_constructor:
-			class_constructor_params = re.findall(
-				class_constructor_params_pattern, class_constructor[0])
-			if len(class_constructor_params) > 0:
-				annotated_method_params = annotate_params(class_constructor_params)
-				is_annotated = fmt(f"{annotated_method_params}") in fmt(ts_class)
-				if not is_annotated:
+			if not find_annotation("constructor", ts_class):
+				constructor = class_constructor.group(0)
+				class_constructor_params = re.findall(
+					class_constructor_params_pattern, constructor)
+				if len(class_constructor_params) > 0:
 					constructor_annot_text = f'    /**\n{annotate_params(class_constructor_params)}     */\n'
 					content = content.replace(
-						class_constructor[0], constructor_annot_text + class_constructor[0])
+						constructor, constructor_annot_text + constructor)
 
 		class_methods: list[str] = re.findall(class_method_pattern, ts_class)
 		for class_method in class_methods:
+			old_annotation: str or None = find_annotation(class_method, ts_class)
+			possible_method_description: str or None = find_annotation_description(old_annotation)
+			if old_annotation: content = content.replace(old_annotation, "")
+			method_description = possible_method_description or "Описание метода"
 			method_params = re.findall(method_params_pattern, class_method)
 			annotated_method_params = annotate_params(method_params)
-			is_annotated = fmt(f"{annotated_method_params}") in fmt(ts_class)
-			if not is_annotated:
-				params_annot_text = f"/**\n     * Описание метода\n{annotated_method_params}     */\n"
-				content = content.replace(
-					class_method, params_annot_text + "    " + class_method)
+			annotated_method_params_list = annotated_method_params.split("\n")
+			old_annotation_list = old_annotation.split("\n") if old_annotation else []
+			new_list = []
+			for a in annotated_method_params_list:
+
+				print(a)
+
+			new_annotation = f"/**\n     * {method_description}\n{annotated_method_params}     */\n"
+
+			content = content.replace(class_method, new_annotation + "    " + class_method)
+
+	# print(content)
 	return content
 
 
