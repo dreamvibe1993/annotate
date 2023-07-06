@@ -37,6 +37,13 @@ unrepairable: str = 'unrepairable'
 
 say = print
 
+DEBUG_MODE = True
+
+
+def log(self, *a):
+    if DEBUG_MODE:
+        print(self, *a, sep=' ', end='\n', file=None)
+
 
 def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str]" or None) -> bool: return len(
     param_type) > 0 and len(param_name) > 0
@@ -125,8 +132,13 @@ def find_annotation(string_to_search_for: str, string_to_search_in: str) -> str 
 
 
 def repair_annotation(annotation: str) -> str:
-    param_line = re.search(r"\*\s@.+", annotation)
-    if param_line and not bool(re.search(r"[{}]", param_line.group(0))):
+    log('annotation_in_repair_annotation: ', annotation)
+    param_line = re.search(r"@.+", annotation)
+    if param_line:
+        log('param_line: ', param_line.group(0))
+    has_no_types = param_line and not bool(re.search(r"[{}]", param_line.group(0)))
+    log('has_types: ', has_no_types)
+    if has_no_types:
         return unrepairable
     else:
         return annotation
@@ -150,8 +162,10 @@ def replace_modifier_space_with_delim(method, ts_class) -> Union[str, str]:
         if modifier + " " in method:
             modifier_word = modifier
     meth = method.replace(f'{modifier_word} ', f"{modifier_word}{delimiter_letters}") if modifier_word else method
-    klass = ts_class.replace(method, method.replace(f'{modifier_word} ', f"{modifier_word}{delimiter_letters}")) if modifier_word else ts_class
+    klass = ts_class.replace(method, method.replace(f'{modifier_word} ',
+                                                    f"{modifier_word}{delimiter_letters}")) if modifier_word else ts_class
     return [meth, klass]
+
 
 def replace_delim(method, ts_class) -> Union[str, str]:
     meth = method
@@ -181,30 +195,56 @@ def annotate_class(content: str) -> str:
                         constructor, constructor_annot_text + constructor)
         class_methods: list[str] = re.findall(class_method_pattern, ts_class)
         for class_method in class_methods:
+            log('\nSTART')
+            log('class_method: ', class_method)
             delimited_modified_entities = replace_modifier_space_with_delim(class_method, ts_class)
             ts_class = delimited_modified_entities[1]
             class_method = delimited_modified_entities[0]
             old_annotation: str or None = find_annotation(class_method, ts_class)
+            log('old_annotation: ', old_annotation)
             possible_method_description: str or None = find_annotation_description(old_annotation)
             method_description = possible_method_description or "Описание метода"
+            log('method_description: ', method_description)
             method_params = re.findall(method_params_pattern, class_method)
             annotated_method_params = annotate_params(method_params)
             new_annotation = f"/**\n     * {method_description}\n{annotated_method_params}     */\n"
+            log('new_annotation: ', new_annotation)
             if old_annotation:
                 old_annotation_formatted = fmt(old_annotation)
                 new_annotation_formatted = fmt(new_annotation)
                 annotations_are_same = old_annotation_formatted == new_annotation_formatted
                 content = content.replace(old_annotation, "")
+                log('annotations_are_same: ', annotations_are_same)
                 if not annotations_are_same:
+                    for old_annotation_line in re.findall(r"@.+", old_annotation):
+                        is_unrepairable = repair_annotation(old_annotation_line) == unrepairable
+                        if not is_unrepairable:
+                            log("is_unrepairable = False. CONTINUE")
+                            continue
+                        possible_param_name = re.search(r"(?<=\s)\b[a-zA-Z]+\b", old_annotation_line)
+                        if not possible_param_name:
+                            log("possible_param_name = None. CONTINUE")
+                            continue
+                        param_to_replace_to_old_one = possible_param_name.group(0)
+                        line_to_replace_to_old_one = old_annotation_line
+                        log("param_to_replace_to_old_one: ", param_to_replace_to_old_one)
+                        log("line_to_replace_to_old_one: ", line_to_replace_to_old_one)
+                        if param_to_replace_to_old_one and line_to_replace_to_old_one:
+                            new_annotation = re.sub(fr'.+{param_to_replace_to_old_one}.*',
+                                                    f"* {line_to_replace_to_old_one}",
+                                                    new_annotation)
                     for new_annotation_line in re.findall(r"@.+", new_annotation):
-                        is_unrepairable = repair_annotation(new_annotation_line) == unrepairable
                         match = re.search(fr"{re.escape(new_annotation_line)}.+", old_annotation)
-                        if match and not is_unrepairable:
+                        if match:
                             new_annotation = new_annotation.replace(new_annotation_line, match.group(0))
+
             original_modified_entities = replace_delim(class_method, ts_class)
             ts_class = original_modified_entities[1]
             class_method = original_modified_entities[0]
+            log('final_annotation: ', new_annotation)
             content = content.replace(class_method, "\n   \t" + new_annotation + "    " + class_method)
+            log('END')
+            log('CONTENT\n', content)
     return content
 
 
