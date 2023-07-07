@@ -35,9 +35,9 @@ modifiers = ['get', 'set', 'async', 'private', 'protected', 'abstract']
 delimiter: str = "%%%%"
 delimiter_letters: str = "ФФФФ"
 unrepairable: str = 'unrepairable'
-method = "method"
-ts_type = "ts_type"
-function = "function"
+METHOD = "method"
+TS_TYPE = "ts_type"
+FUNCTION = "function"
 
 say = print
 
@@ -102,22 +102,22 @@ def fmt(s: str) -> str:
 
 
 def find_vertical_annotation(string_to_search_for: str, string_to_search_in: str,
-                             search_for: ts_type or method) -> str or None:
+                             search_for: TS_TYPE or METHOD) -> str or None:
     possible_only_name = re.search(r"\b\w+\b\(", string_to_search_for, flags=re.MULTILINE)
     only_name = possible_only_name.group(0).replace("(", "") if possible_only_name else string_to_search_for
     annotations = re.findall(r'^\s*$\n\s+/\*\*\n[^%]+?\*/\n\s+',
                              string_to_search_in,
-                             flags=re.MULTILINE) if search_for == method else re.findall(
+                             flags=re.MULTILINE) if search_for == METHOD else re.findall(
         r'/\*\*\n[^%]+?\*/\n',
         string_to_search_in,
         flags=re.MULTILINE)
     found: str or None = None
     for a in annotations:
         if len(a) == 0: continue
-        if search_for == ts_type:
+        if search_for == TS_TYPE:
             a += "export type "
         if a + only_name in string_to_search_in:
-            if search_for == ts_type:
+            if search_for == TS_TYPE:
                 a = a.replace('export type ', "")
 
             found = a
@@ -126,7 +126,7 @@ def find_vertical_annotation(string_to_search_for: str, string_to_search_in: str
 
 
 def find_horiz_annotation(string_to_search_for: str, string_to_search_in: str,
-                          search_for: ts_type or method) -> str or None:
+                          search_for: TS_TYPE or METHOD) -> str or None:
     possible_only_name = re.search(r"\b\w+\b\(", string_to_search_for, flags=re.MULTILINE)
     only_name = possible_only_name.group(0).replace("(", "") if possible_only_name else string_to_search_for
     annotations = re.findall(r'/\*\*\s.+\*/\n\s+',
@@ -135,7 +135,7 @@ def find_horiz_annotation(string_to_search_for: str, string_to_search_in: str,
     found: str or None = None
     for a in annotations:
         if len(a) == 0: continue
-        if search_for == ts_type:
+        if search_for == TS_TYPE:
             a += "export type "
         if a + only_name in string_to_search_in:
             found = a
@@ -143,7 +143,7 @@ def find_horiz_annotation(string_to_search_for: str, string_to_search_in: str,
     return found
 
 
-def find_annotation(string_to_search_for: str, string_to_search_in: str, entity: ts_type or method) -> str or None:
+def find_annotation(string_to_search_for: str, string_to_search_in: str, entity: TS_TYPE or METHOD) -> str or None:
     found: str or None = find_vertical_annotation(string_to_search_for, string_to_search_in,
                                                   entity) or find_horiz_annotation(
         string_to_search_for, string_to_search_in, entity)
@@ -195,16 +195,31 @@ def replace_delim(method, ts_class) -> Union[str, str]:
     return [meth, klass]
 
 
-
-def annotate_functions(entity: str, content: str, typeof_entity: function or method or type) -> str:
-    old_annotation: str or None = find_annotation(entity, content, method)
+def annotate_functions(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE) -> str:
+    delimited_modified_entities = replace_modifier_space_with_delim(entity, content)
+    entity = delimited_modified_entities[0]
+    content = delimited_modified_entities[1]
+    old_annotation: str or None = find_annotation(entity, content, METHOD)
+    if old_annotation: content = content.replace(old_annotation, "")
     possible_method_description: str or None = find_annotation_description(old_annotation)
-    method_description = possible_method_description or "Описание метода"
+    method_description = possible_method_description or ""
+    if not possible_method_description:
+        if typeof_entity == METHOD:
+            method_description = "Описание метода"
+        if typeof_entity == FUNCTION:
+            method_description = "Описание функции"
     method_params = re.findall(method_params_pattern, entity)
     annotated_method_params = annotate_params(method_params)
     new_annotation = f"/**\n     * {method_description}\n{annotated_method_params}     */\n"
     new_annotation = update_annotation(old_annotation, new_annotation)
-    return new_annotation
+    original_modified_entities = replace_delim(entity, content)
+    entity = original_modified_entities[0]
+    content = original_modified_entities[1]
+    if typeof_entity == METHOD:
+        content = content.replace(entity, "\n   \t" + new_annotation + "    " + entity)
+    if typeof_entity == FUNCTION:
+        content = content.replace(entity, "\n   \t" + new_annotation + "    " + entity)
+    return content
 
 
 def annotate_class(content: str) -> str:
@@ -214,7 +229,7 @@ def annotate_class(content: str) -> str:
             content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
         class_constructor = re.search(class_constructor_pattern, ts_class)
         if class_constructor:
-            if not find_annotation("constructor", ts_class, method):
+            if not find_annotation("constructor", ts_class, METHOD):
                 constructor = class_constructor.group(0)
                 class_constructor_params = re.findall(
                     class_constructor_params_pattern, constructor)
@@ -224,21 +239,7 @@ def annotate_class(content: str) -> str:
                         constructor, constructor_annot_text + constructor)
         class_methods: list[str] = re.findall(class_method_pattern, ts_class)
         for class_method in class_methods:
-            delimited_modified_entities = replace_modifier_space_with_delim(class_method, content)
-            class_method = delimited_modified_entities[0]
-            content = delimited_modified_entities[1]
-            old_annotation: str or None = find_annotation(class_method, content, method)
-            if old_annotation: content = content.replace(old_annotation, "")
-            possible_method_description: str or None = find_annotation_description(old_annotation)
-            method_description = possible_method_description or "Описание метода"
-            method_params = re.findall(method_params_pattern, class_method)
-            annotated_method_params = annotate_params(method_params)
-            new_annotation = f"/**\n     * {method_description}\n{annotated_method_params}     */\n"
-            new_annotation = update_annotation(old_annotation, new_annotation)
-            original_modified_entities = replace_delim(class_method, content)
-            class_method = original_modified_entities[0]
-            content = original_modified_entities[1]
-            content = content.replace(class_method, "\n   \t" + new_annotation + "    " + class_method)
+            content = annotate_functions(class_method, content, METHOD)
     return content
 
 
@@ -248,16 +249,7 @@ def annotate_functions_and_lambdas(content: str) -> str:
     lambdas_and_functions: list[str] = lambdas + functions
     for entity in lambdas_and_functions:
         replacement_candidate: str = f"export {entity}" if f"export {entity}" in content else entity
-        old_annotation: str or None = find_annotation(replacement_candidate, content, method)
-
-        possible_method_description: str or None = find_annotation_description(old_annotation)
-        method_description = possible_method_description or "Описание функции"
-        method_params = re.findall(method_params_pattern, entity)
-        annotated_method_params = annotate_params(method_params)
-        new_annotation = f"/**\n     * {method_description}\n{annotated_method_params}     */\n"
-        if old_annotation: content = content.replace(old_annotation, "")
-        new_annotation = update_annotation(old_annotation, new_annotation)
-        content = content.replace(replacement_candidate, "\n   \t" + new_annotation + "    " + replacement_candidate)
+        content = annotate_functions(replacement_candidate, content, FUNCTION)
     return content
 
 
@@ -328,7 +320,7 @@ def annotate_type(content: str) -> str:
         type_name = re.search(type_name_pattern, whole_ts_type)
         if not type_name: continue
         type_declaration = f"{'export type' if f'export type {type_name.group(0)}' in content else 'type'} {type_name.group(0)}"
-        old_annotation = find_annotation(type_name.group(0), content, ts_type)
+        old_annotation = find_annotation(type_name.group(0), content, TS_TYPE)
         type_intersections = re.findall(type_intersect_pattern, whole_ts_type)
         possible_type_props = re.search(r"{([^}]*)}", whole_ts_type)
         if not possible_type_props: continue
