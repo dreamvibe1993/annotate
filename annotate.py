@@ -1,4 +1,4 @@
-# 1.10.0
+# 1.10.1
 
 import re
 import os
@@ -68,7 +68,7 @@ def get_type_and_name(pat: Dict[str, str], string_from: str) -> Union[str or Non
 
 
 def get_parameter_injected(param_type: str, param_name: str, indentation: str) -> str:
-    return f"{indentation}* @param {{{param_type}}} {param_name} - \n"
+    return f"{indentation} * @param {{{param_type}}} {param_name} -\n"
 
 
 def annotate_params(method_params: "list[str]", indentation: str) -> str:
@@ -206,9 +206,6 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
     indentation = re.sub(r"\n", "", possible_indentation.group(0)) if possible_indentation else ""
     old_annotation: str or None = find_annotation(entity, content, typeof_entity)
     if old_annotation: content = content.replace(indentation + old_annotation, "")
-    log("\nstart")
-    log("entity: ", entity)
-    log("old_annotation: ", old_annotation)
     possible_method_description: str or None = find_annotation_description(old_annotation)
     method_description = possible_method_description or ""
     if not possible_method_description:
@@ -218,25 +215,24 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
             method_description = "Описание функции"
     method_params = re.findall(method_params_pattern, entity)
     annotated_method_params = annotate_params(method_params, indentation)
-    log(len(indentation))
-    new_annotation = f"\n{indentation}/**\n{indentation}* {method_description}\n{annotated_method_params}{indentation}*/\n"
-    log("new_annotation: ", new_annotation)
-    if indentation: new_annotation = re.sub(fr"{indentation}+", indentation, new_annotation)
+    new_annotation = f"\n{indentation}/**\n{indentation} * {method_description}\n{annotated_method_params}{indentation} */\n"
+    if indentation: new_annotation = re.sub(fr"({indentation})+", indentation, new_annotation)
     new_annotation = update_annotation(old_annotation, new_annotation, indentation)
-    log("fin_annotation: ", new_annotation)
     original_modified_entities = replace_delimiter(entity, content)
     entity = original_modified_entities[0]
     content = original_modified_entities[1]
-    log("indentation + new_annotation + indentation + entity: ", indentation + new_annotation + indentation + entity)
-    if typeof_entity == METHOD or typeof_entity == FUNCTION:
+    if typeof_entity == FUNCTION:
         new_entity = indentation + new_annotation + indentation + entity
         content = content.replace(entity, new_entity)
-        content = re.sub(rf"(\n{indentation}+\n?)+{re.escape(new_entity)}", "\n" + new_entity, content)
+        content = re.sub(rf"(\n{re.escape(indentation)}+\n?)+{re.escape(new_entity)}", "\n" + new_entity, content)
+    if typeof_entity == METHOD:
+        b_entity = entity
+        new_entity = re.sub(r"^(\s)*$\n?", "", new_annotation + indentation + b_entity)
+        content = content.replace(entity, new_entity)
+        content = re.sub(rf"(\n*{re.escape(indentation)})+\n*{re.escape(new_entity)}", "\n"+new_entity, content)
     if typeof_entity == TS_TYPE:
         new_entity = new_annotation + entity
         content = re.sub(rf"\n?{re.escape(new_entity)}", new_entity, content, flags=re.MULTILINE)
-        # content = content.replace(entity, new_annotation + entity)
-    log("end\n")
     return content
 
 
@@ -252,8 +248,8 @@ def annotate_class(content: str) -> str:
             if len(class_constructor_params) < 1: continue
             possible_indentation = re.search(rf"\s*(?={CONSTRUCTOR})", content)
             indentation = possible_indentation.group(0) if possible_indentation else ""
-            constructor_annot_text = f'{indentation}/**\n{annotate_params(class_constructor_params, indentation)}{indentation}*/\n'
-            content = content.replace(constructor, constructor_annot_text + constructor)
+            constructor_annot_text = f"\n{indentation}/**\n{indentation}\n{annotate_params(class_constructor_params, indentation)}{indentation}*/\n"
+            content = content.replace(constructor, re.sub(r"^[\s\n]*$\n?", "", constructor_annot_text + constructor, flags=re.MULTILINE))
         class_methods: list[str] = re.findall(class_method_pattern, ts_class)
         for class_method in class_methods: content = create_annotation(class_method, content, METHOD)
     return content
@@ -317,7 +313,7 @@ def update_annotation(old_annotation: str, new_annotation: str, identation: str)
         param_to_replace_to_old_one = possible_param_name.group(0)
         line_to_replace_to_old_one = old_annotation_line
         if not param_to_replace_to_old_one or not line_to_replace_to_old_one: continue
-        new_annotation = re.sub(fr'.+{param_to_replace_to_old_one}.*', f"{identation}* {line_to_replace_to_old_one}",
+        new_annotation = re.sub(fr'.+{param_to_replace_to_old_one}.*', f"{identation} * {line_to_replace_to_old_one}",
                                 new_annotation)
     for new_annotation_line in re.findall(r"@.+", new_annotation):
         match = re.search(fr"{re.escape(new_annotation_line)}.+", old_annotation)
@@ -343,7 +339,7 @@ def annotate_type(content: str) -> str:
             map(lambda prop: prop.strip(), re.sub(r"[{};]", "", possible_type_props.group(0)).split("\n")))
         possible_annotation_description = find_annotation_description(old_annotation)
         annotation_description = "".join(
-            list(map(lambda d: f"{indentation}* {d}\n", possible_annotation_description.split(
+            list(map(lambda d: f"{indentation} * {d}\n", possible_annotation_description.split(
                 "\n")))) if possible_annotation_description else ""
         new_annotation = "/**\n"
         new_annotation += annotation_description
@@ -352,7 +348,9 @@ def annotate_type(content: str) -> str:
         new_annotation += " */\n"
         if old_annotation: content = content.replace(old_annotation, "")
         new_annotation = update_annotation(old_annotation, new_annotation, indentation)
-        content = content.replace(type_declaration.strip(), new_annotation + type_declaration)
+        new_entity = new_annotation + type_declaration
+        content = content.replace(type_declaration.strip(), new_entity)
+        content = re.sub(rf"\n+{re.escape(new_entity)}", "\n\n" + new_entity, content, flags=re.MULTILINE)
     return content
 
 
