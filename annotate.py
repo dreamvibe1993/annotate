@@ -46,7 +46,7 @@ export_type = "export type"
 
 say = print
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 
 def log(self, *a):
@@ -148,6 +148,7 @@ def find_annotation(target_string: str, source_string: str, search_for: TS_TYPE 
     possible_annotation: str or None = find_vertical_annotation(target_string, source_string, search_for)
     if not possible_annotation: possible_annotation = find_horizontal_annotation(target_string, source_string,
                                                                                  search_for)
+    if possible_annotation: possible_annotation = re.sub(r"^$", "", possible_annotation.strip())
     return possible_annotation
 
 
@@ -201,8 +202,13 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
     delimited_modified_entities = replace_modifier_space_with_delimiter(entity, content)
     entity = delimited_modified_entities[0]
     content = delimited_modified_entities[1]
+    possible_indentation = re.search(rf"\s+?(?={re.escape(entity)})", content)
+    indentation = re.sub(r"\n", "", possible_indentation.group(0)) if possible_indentation else ""
     old_annotation: str or None = find_annotation(entity, content, typeof_entity)
-    if old_annotation: content = content.replace(old_annotation, "")
+    if old_annotation: content = content.replace(indentation + old_annotation, "")
+    log("\nstart")
+    log("entity: ", entity)
+    log("old_annotation: ", old_annotation)
     possible_method_description: str or None = find_annotation_description(old_annotation)
     method_description = possible_method_description or ""
     if not possible_method_description:
@@ -211,18 +217,26 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
         if typeof_entity == FUNCTION or typeof_entity == LAMBDA:
             method_description = "Описание функции"
     method_params = re.findall(method_params_pattern, entity)
-    possible_indentation = re.search(rf"\s+?(?={re.escape(entity)})", content)
-    indentation = re.sub(r"\n", "", possible_indentation.group(0)) if possible_indentation else ""
     annotated_method_params = annotate_params(method_params, indentation)
-    new_annotation = f"\n\n{indentation}/**\n{indentation}* {method_description}\n{annotated_method_params}{indentation}*/\n"
+    log(len(indentation))
+    new_annotation = f"\n{indentation}/**\n{indentation}* {method_description}\n{annotated_method_params}{indentation}*/\n"
+    log("new_annotation: ", new_annotation)
+    if indentation: new_annotation = re.sub(fr"{indentation}+", indentation, new_annotation)
     new_annotation = update_annotation(old_annotation, new_annotation, indentation)
+    log("fin_annotation: ", new_annotation)
     original_modified_entities = replace_delimiter(entity, content)
     entity = original_modified_entities[0]
     content = original_modified_entities[1]
+    log("indentation + new_annotation + indentation + entity: ", indentation + new_annotation + indentation + entity)
     if typeof_entity == METHOD or typeof_entity == FUNCTION:
-        content = content.replace(entity, indentation + new_annotation + indentation + entity)
+        new_entity = indentation + new_annotation + indentation + entity
+        content = content.replace(entity, new_entity)
+        content = re.sub(rf"(\n{indentation}+\n?)+{re.escape(new_entity)}", "\n" + new_entity, content)
     if typeof_entity == TS_TYPE:
-        content = content.replace(entity, new_annotation + entity)
+        new_entity = new_annotation + entity
+        content = re.sub(rf"\n?{re.escape(new_entity)}", new_entity, content, flags=re.MULTILINE)
+        # content = content.replace(entity, new_annotation + entity)
+    log("end\n")
     return content
 
 
