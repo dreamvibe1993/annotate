@@ -1,4 +1,4 @@
-# 1.10.1
+# 1.10.2
 
 import re
 import os
@@ -393,5 +393,5 @@ else:
     say(f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
 # TODO: enums
-# TODO: generics в типа
+# TODO: generics в типах
 # TODO: interfaces
