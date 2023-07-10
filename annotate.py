@@ -5,34 +5,10 @@ import os
 import argparse
 from typing import Dict, Union, Tuple
 
-component_pattern = r"export\s+const\s\w+\s=.+JSX.Element\s=>\s{"
-component_name_pattern = r"(?<=\s)[A-Z]\w+(?=\s=\s)"
-
-type_pattern = r"type[^}]*};"
-type_name_pattern = r"(?<=type\s)\w+(?=\s=\s)"
-type_intersect_pattern = r"\w+(?=\s&)"
-type_unions_pattern = r"\w+(?=\s\|)"
-type_props_pattern = r"{([^}]*)}"
-
-ts_class_pattern = r"export\sclass\s[A-Z]\w+[^{}]*{[^\r]+}"
-class_name_pattern = r"(?<=class\s)\w+"
-
-class_constructor_pattern = r"[^\n]+constructor\([^}]*\)\s{[^}]*}"
-class_constructor_params_pattern = r"(?<=\()[^}]+(?=\)\s)"
-
-class_method_pattern = r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{"
-class_method_name_pattern = r"\w+(?=\()"
-method_params_pattern = r"(?<=\()[^};]+?(?=\):)"
 method_param_type_pattern = r"(?<=:\s).+"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
-func_type_param_pattern = r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?'
-
-function_pattern = r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{"
-lambda_pattern = r"const\s\w+\s=\s\([^/]*\).+\s=>\s{"
-
 modifiers = ['get', 'set', 'async', 'private', 'protected', 'abstract']
-delimiter: str = "%%%%"
 delimiter_letters: str = "ФФФФ"
 unrepairable: str = 'unrepairable'
 
@@ -46,22 +22,11 @@ export_type = "export type"
 
 say = print
 
-DEBUG_MODE = True
-
-
-def log(self, *a):
-    if DEBUG_MODE:
-        print(self, *a, sep=' ', end='\n', file=None)
-
-
-def we_have_name_and_type(param_name: "list[str]" or None, param_type: "list[str]" or None) -> bool: return len(
-    param_type) > 0 and len(param_name) > 0
-
 
 def get_type_and_name(pat: Dict[str, str], string_from: str) -> Union[str or None, str or None, bool]:
     param_type = re.findall(pat["type"], string_from)
     param_name = re.findall(pat["name"], string_from)
-    if we_have_name_and_type(param_name, param_type):
+    if len(param_type) > 0 and len(param_name) > 0:
         return [param_type[0], param_name[0].replace('?', ''), True]
     else:
         return [None, None, False]
@@ -74,10 +39,10 @@ def get_parameter_injected(param_type: str, param_name: str, indentation: str) -
 def annotate_params(method_params: "list[str]", indentation: str) -> str:
     params_text = ""
     for line_of_methods_params in method_params:
-        for func_type in re.findall(func_type_param_pattern, line_of_methods_params):
-            parameter_of_func_type = re.sub(r":\s\(", delimiter + "(", func_type)
-            func_param_name = parameter_of_func_type.split(delimiter)[0]
-            func_param_type = parameter_of_func_type.split(delimiter)[1]
+        for func_type in re.findall(r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?', line_of_methods_params):
+            parameter_of_func_type = re.sub(r":\s\(", delimiter_letters + "(", func_type)
+            func_param_name = parameter_of_func_type.split(delimiter_letters)[0]
+            func_param_type = parameter_of_func_type.split(delimiter_letters)[1]
             params_text += get_parameter_injected(func_param_type, func_param_name, indentation)
             line_of_methods_params = line_of_methods_params.replace(func_type, "")
         if "," not in line_of_methods_params:
@@ -198,7 +163,7 @@ def replace_delimiter(entity_with_delimiter: str, content_with_delimiter: str) -
     return entity, content
 
 
-def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE or LAMBDA) -> str:
+def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE or LAMBDA) -> str:
     delimited_modified_entities = replace_modifier_space_with_delimiter(entity, content)
     entity = delimited_modified_entities[0]
     content = delimited_modified_entities[1]
@@ -213,7 +178,7 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
             method_description = "Описание метода"
         if typeof_entity == FUNCTION or typeof_entity == LAMBDA:
             method_description = "Описание функции"
-    method_params = re.findall(method_params_pattern, entity)
+    method_params = re.findall(r"(?<=\()[^};]+?(?=\):)", entity)
     annotated_method_params = annotate_params(method_params, indentation)
     new_annotation = f"\n{indentation}/**\n{indentation} * {method_description}\n{annotated_method_params}{indentation} */\n"
     if indentation: new_annotation = re.sub(fr"({indentation})+", indentation, new_annotation)
@@ -221,55 +186,55 @@ def create_annotation(entity: str, content: str, typeof_entity: FUNCTION or METH
     original_modified_entities = replace_delimiter(entity, content)
     entity = original_modified_entities[0]
     content = original_modified_entities[1]
+    if typeof_entity == TS_TYPE:
+        new_entity = new_annotation + entity
+        content = re.sub(rf"\n?{re.escape(new_entity)}", new_entity, content, flags=re.MULTILINE)
     if typeof_entity == FUNCTION:
         new_entity = indentation + new_annotation + indentation + entity
         content = content.replace(entity, new_entity)
         content = re.sub(rf"(\n{re.escape(indentation)}+\n?)+{re.escape(new_entity)}", "\n" + new_entity, content)
     if typeof_entity == METHOD:
-        b_entity = entity
-        new_entity = re.sub(r"^(\s)*$\n?", "", new_annotation + indentation + b_entity)
+        new_entity = re.sub(r"^(\s)*$\n?", "", new_annotation + indentation + entity)
         content = content.replace(entity, new_entity)
-        content = re.sub(rf"(\n*{re.escape(indentation)})+\n*{re.escape(new_entity)}", "\n"+new_entity, content)
-    if typeof_entity == TS_TYPE:
-        new_entity = new_annotation + entity
-        content = re.sub(rf"\n?{re.escape(new_entity)}", new_entity, content, flags=re.MULTILINE)
+        content = re.sub(rf"(\n*{re.escape(indentation)})+\n*{re.escape(new_entity)}", "\n" + new_entity, content)
     return content
 
 
 def annotate_class(content: str) -> str:
-    ts_classes: list[str] = re.findall(ts_class_pattern, content)
+    ts_classes: list[str] = re.findall(r"export\sclass\s[A-Z]\w+[^{}]*{[^\r]+}", content)
     for ts_class in ts_classes:
         if not bool(re.search(fr"/\*\*.+\*/\n{re.escape(ts_class)}", content, flags=re.DOTALL)):
             content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
-        class_constructor = re.search(class_constructor_pattern, ts_class)
+        class_constructor = re.search(r"[^\n]+constructor\([^}]*\)\s{[^}]*}", ts_class)
         if class_constructor and not find_annotation(f"{CONSTRUCTOR}", ts_class, METHOD):
             constructor = class_constructor.group(0)
-            class_constructor_params = re.findall(class_constructor_params_pattern, constructor)
+            class_constructor_params = re.findall(r"(?<=\()[^}]+(?=\)\s)", constructor)
             if len(class_constructor_params) < 1: continue
             possible_indentation = re.search(rf"\s*(?={CONSTRUCTOR})", content)
             indentation = possible_indentation.group(0) if possible_indentation else ""
             constructor_annot_text = f"\n{indentation}/**\n{indentation}\n{annotate_params(class_constructor_params, indentation)}{indentation}*/\n"
-            content = content.replace(constructor, re.sub(r"^[\s\n]*$\n?", "", constructor_annot_text + constructor, flags=re.MULTILINE))
-        class_methods: list[str] = re.findall(class_method_pattern, ts_class)
-        for class_method in class_methods: content = create_annotation(class_method, content, METHOD)
+            content = content.replace(constructor, re.sub(r"^[\s\n]*$\n?", "", constructor_annot_text + constructor,
+                                                          flags=re.MULTILINE))
+        class_methods: list[str] = re.findall(r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{", ts_class)
+        for class_method in class_methods: content = annotate(class_method, content, METHOD)
     return content
 
 
 def annotate_functions_and_lambdas(content: str) -> str:
     lambdas: list[str] = re.findall(r"const\s\w+\s=\s\([^/]*?\).+?\s=>\s{", content)
-    functions: list[str] = re.findall(function_pattern, content)
+    functions: list[str] = re.findall(r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{", content)
     lambdas_and_functions: list[str] = lambdas + functions
     for entity in lambdas_and_functions:
         replacement_candidate: str = f"export {entity}" if f"export {entity}" in content else entity
-        content = create_annotation(replacement_candidate, content, FUNCTION)
+        content = annotate(replacement_candidate, content, FUNCTION)
     return content
 
 
 def annotate_component(content: str) -> str:
-    components: list[str] = re.findall(component_pattern, content)
+    components: list[str] = re.findall(r"export\s+const\s\w+\s=.+JSX.Element\s=>\s{", content)
     for component in components:
         if fmt("*/" + component) in fmt(content): continue
-        component_name_found = re.search(component_name_pattern, str(component)).group()
+        component_name_found = re.search(r"(?<=\s)[A-Z]\w+(?=\s=\s)", str(component)).group()
         component_with_description: str = f"/**\n * Описание компонента\n"
         if re.search(fr"\b{component_name_found}Props", content):
             component_with_description += f" * @param props {{@link {component_name_found}Props}}\n */\n{component}"
@@ -299,7 +264,7 @@ def annotate_type_props(props: "list[str]") -> str:
     return "".join(annotation_lines)
 
 
-def update_annotation(old_annotation: str, new_annotation: str, identation: str) -> str:
+def update_annotation(old_annotation: str, new_annotation: str, indentation: str) -> str:
     if not old_annotation: return new_annotation
     old_annotation_formatted = fmt(old_annotation)
     new_annotation_formatted = fmt(new_annotation)
@@ -313,7 +278,7 @@ def update_annotation(old_annotation: str, new_annotation: str, identation: str)
         param_to_replace_to_old_one = possible_param_name.group(0)
         line_to_replace_to_old_one = old_annotation_line
         if not param_to_replace_to_old_one or not line_to_replace_to_old_one: continue
-        new_annotation = re.sub(fr'.+{param_to_replace_to_old_one}.*', f"{identation} * {line_to_replace_to_old_one}",
+        new_annotation = re.sub(fr'.+{param_to_replace_to_old_one}.*', f"{indentation} * {line_to_replace_to_old_one}",
                                 new_annotation)
     for new_annotation_line in re.findall(r"@.+", new_annotation):
         match = re.search(fr"{re.escape(new_annotation_line)}.+", old_annotation)
@@ -325,14 +290,14 @@ def update_annotation(old_annotation: str, new_annotation: str, identation: str)
 def annotate_type(content: str) -> str:
     ts_types = re.findall(r"type\s\w+\s=\s.*?};", content, flags=re.DOTALL)
     for whole_ts_type in ts_types:
-        possible_type_name = re.search(type_name_pattern, whole_ts_type)
+        possible_type_name = re.search(r"(?<=type\s)\w+(?=\s=\s)", whole_ts_type)
         if not possible_type_name: continue
         type_name = possible_type_name.group(0)
         type_declaration = f"{export_type if f'{export_type} {type_name}' in content else 'type'} {type_name}"
         possible_indentation = re.search(rf"\s*(?={type_declaration})", content)
         indentation = possible_indentation.group(0) if possible_indentation else ""
         old_annotation = find_annotation(possible_type_name.group(0), content, TS_TYPE)
-        type_intersections = re.findall(type_intersect_pattern, whole_ts_type)
+        type_intersections = re.findall(r"\w+(?=\s&)", whole_ts_type)
         possible_type_props = re.search(r"{([^}]*)}", whole_ts_type)
         if not possible_type_props: continue
         type_props = list(
@@ -380,7 +345,7 @@ def handle_finish(content, file_path, should_annotate_same_file=False):
         say(f"Аннотированный файл сохранен как: {annotated_file_path}")
 
 
-def annotate(content) -> str:
+def run_pipeline(content) -> str:
     annotated = annotate_class(
         annotate_type(
             annotate_functions_and_lambdas(
@@ -397,7 +362,8 @@ def process_file(file_path, should_annotate_same_file=False):
     try:
         content = parse_file(file_path)
         if content is None: return say("Этот файл пуст!")
-        handle_finish(annotate(content), file_path, should_annotate_same_file)
+        new_content = run_pipeline(content)
+        handle_finish(new_content, file_path, should_annotate_same_file)
     except Exception as e:
         say(f"Произошла ошибка при обработке файла '{file_path}': {str(e)}")
 
