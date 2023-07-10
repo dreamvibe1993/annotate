@@ -41,8 +41,7 @@ def annotate_params(method_params: "list[str]", indentation: str) -> str:
     for line_of_methods_params in method_params:
         for func_type in re.findall(r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?', line_of_methods_params):
             parameter_of_func_type = re.sub(r":\s\(", delimiter_letters + "(", func_type)
-            func_param_name = parameter_of_func_type.split(delimiter_letters)[0]
-            func_param_type = parameter_of_func_type.split(delimiter_letters)[1]
+            func_param_name, func_param_type = parameter_of_func_type.split(delimiter_letters)
             params_text += get_parameter_injected(func_param_type, func_param_name, indentation)
             line_of_methods_params = line_of_methods_params.replace(func_type, "")
         if "," not in line_of_methods_params:
@@ -64,7 +63,6 @@ def annotate_params(method_params: "list[str]", indentation: str) -> str:
                 if type_without_generics + generic not in line_of_methods_params: continue
                 type_of_param = type_without_generics + generic
             params_text += get_parameter_injected(type_of_param, name_of_param, indentation)
-
     return params_text
 
 
@@ -164,28 +162,31 @@ def replace_delimiter(entity_with_delimiter: str, content_with_delimiter: str) -
 
 
 def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE or LAMBDA) -> str:
-    delimited_modified_entities = replace_modifier_space_with_delimiter(entity, content)
-    entity = delimited_modified_entities[0]
-    content = delimited_modified_entities[1]
+    entity, content = replace_modifier_space_with_delimiter(entity, content)
     possible_indentation = re.search(rf"\s+?(?={re.escape(entity)})", content)
     indentation = re.sub(r"\n", "", possible_indentation.group(0)) if possible_indentation else ""
     old_annotation: str or None = find_annotation(entity, content, typeof_entity)
     if old_annotation: content = content.replace(indentation + old_annotation, "")
     possible_method_description: str or None = find_annotation_description(old_annotation)
-    method_description = possible_method_description or ""
-    if not possible_method_description:
-        if typeof_entity == METHOD:
-            method_description = "Описание метода"
-        if typeof_entity == FUNCTION or typeof_entity == LAMBDA:
-            method_description = "Описание функции"
+    method_description = possible_method_description or get_default_description(typeof_entity)
     method_params = re.findall(r"(?<=\()[^};]+?(?=\):)", entity)
     annotated_method_params = annotate_params(method_params, indentation)
     new_annotation = f"\n{indentation}/**\n{indentation} * {method_description}\n{annotated_method_params}{indentation} */\n"
-    if indentation: new_annotation = re.sub(fr"({indentation})+", indentation, new_annotation)
     new_annotation = update_annotation(old_annotation, new_annotation, indentation)
-    original_modified_entities = replace_delimiter(entity, content)
-    entity = original_modified_entities[0]
-    content = original_modified_entities[1]
+    entity, content = replace_delimiter(entity, content)
+    return insert_annotation(new_annotation, entity, typeof_entity, indentation, content)
+
+
+def get_default_description(typeof_entity: FUNCTION or METHOD or LAMBDA) -> str:
+    if typeof_entity == METHOD:
+        return "Описание метода"
+    if typeof_entity == FUNCTION or typeof_entity == LAMBDA:
+        return "Описание функции"
+    return ""
+
+
+def insert_annotation(new_annotation: str, entity: str, typeof_entity: FUNCTION or METHOD or TS_TYPE,
+                      indentation: str, content: str) -> str:
     if typeof_entity == TS_TYPE:
         new_entity = new_annotation + entity
         content = re.sub(rf"\n?{re.escape(new_entity)}", new_entity, content, flags=re.MULTILINE)
@@ -290,6 +291,8 @@ def update_annotation(old_annotation: str, new_annotation: str, indentation: str
 def annotate_type(content: str) -> str:
     ts_types = re.findall(r"type\s\w+\s=\s.*?};", content, flags=re.DOTALL)
     for whole_ts_type in ts_types:
+        possible_type_props = re.search(r"{([^}]*)}", whole_ts_type)
+        if not possible_type_props: continue
         possible_type_name = re.search(r"(?<=type\s)\w+(?=\s=\s)", whole_ts_type)
         if not possible_type_name: continue
         type_name = possible_type_name.group(0)
@@ -297,24 +300,19 @@ def annotate_type(content: str) -> str:
         possible_indentation = re.search(rf"\s*(?={type_declaration})", content)
         indentation = possible_indentation.group(0) if possible_indentation else ""
         old_annotation = find_annotation(possible_type_name.group(0), content, TS_TYPE)
-        type_intersections = re.findall(r"\w+(?=\s&)", whole_ts_type)
-        possible_type_props = re.search(r"{([^}]*)}", whole_ts_type)
-        if not possible_type_props: continue
-        type_props = list(
-            map(lambda prop: prop.strip(), re.sub(r"[{};]", "", possible_type_props.group(0)).split("\n")))
-        possible_annotation_description = find_annotation_description(old_annotation)
-        annotation_description = "".join(
-            list(map(lambda d: f"{indentation} * {d}\n", possible_annotation_description.split(
-                "\n")))) if possible_annotation_description else ""
-        new_annotation = "/**\n"
-        new_annotation += annotation_description
-        new_annotation += annotate_type_props(type_props)
-        new_annotation += add_annot_intersection_types(type_intersections)
-        new_annotation += " */\n"
         if old_annotation: content = content.replace(old_annotation, "")
+        type_props_list = re.sub(r"[{};]", "", possible_type_props.group(0)).split("\n")
+        type_props_list = list(map(lambda prop: prop.strip(), type_props_list))
+        types_props_annotated = annotate_type_props(type_props_list)
+        type_intersections = re.findall(r"\w+(?=\s&)", whole_ts_type)
+        intersections_annotated = add_annot_intersection_types(type_intersections)
+        possible_annotation_description = find_annotation_description(old_annotation)
+        annotation_description_list = possible_annotation_description.split("\n") if possible_annotation_description else []
+        annotation_description = "".join(list(map(lambda d: f"{indentation} * {d}\n", annotation_description_list)))
+        new_annotation = f"/**\n{annotation_description}{types_props_annotated}{intersections_annotated} */\n"
         new_annotation = update_annotation(old_annotation, new_annotation, indentation)
         new_entity = new_annotation + type_declaration
-        content = content.replace(type_declaration.strip(), new_entity)
+        content = content.replace(type_declaration, new_entity)
         content = re.sub(rf"\n+{re.escape(new_entity)}", "\n\n" + new_entity, content, flags=re.MULTILINE)
     return content
 
@@ -346,7 +344,7 @@ def handle_finish(content, file_path, should_annotate_same_file=False):
 
 
 def run_pipeline(content) -> str:
-    annotated = annotate_class(
+    return annotate_class(
         annotate_type(
             annotate_functions_and_lambdas(
                 annotate_component(
@@ -355,7 +353,6 @@ def run_pipeline(content) -> str:
             )
         )
     )
-    return annotated
 
 
 def process_file(file_path, should_annotate_same_file=False):
