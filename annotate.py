@@ -1,4 +1,5 @@
-# 1.10.2
+# 1.11.0
+# https://github.com/dreamvibe1993/annotate
 
 import re
 import os
@@ -163,8 +164,8 @@ def replace_delimiter(entity_with_delimiter: str, content_with_delimiter: str) -
 
 def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE or LAMBDA) -> str:
     entity, content = replace_modifier_space_with_delimiter(entity, content)
-    possible_indentation = re.search(rf"\s+?(?={re.escape(entity)})", content)
-    indentation = re.sub(r"\n", "", possible_indentation.group(0)) if possible_indentation else ""
+    indentation = get_indentation(rf"\s+?(?={re.escape(entity)})", content)
+    indentation = re.sub(r"\n", "", indentation) if indentation else ""
     old_annotation: str or None = find_annotation(entity, content, typeof_entity)
     if old_annotation: content = content.replace(indentation + old_annotation, "")
     possible_method_description: str or None = find_annotation_description(old_annotation)
@@ -183,6 +184,12 @@ def get_default_description(typeof_entity: FUNCTION or METHOD or LAMBDA) -> str:
     if typeof_entity == FUNCTION or typeof_entity == LAMBDA:
         return "Описание функции"
     return ""
+
+
+def get_indentation(regex: str, source_string: str) -> str:
+    possible_indentation = re.search(regex, source_string, flags=re.MULTILINE)
+    indentation = possible_indentation.group(0) if possible_indentation else ""
+    return indentation
 
 
 def insert_annotation(new_annotation: str, entity: str, typeof_entity: FUNCTION or METHOD or TS_TYPE,
@@ -211,13 +218,17 @@ def annotate_class(content: str) -> str:
             constructor = class_constructor.group(0)
             class_constructor_params = re.findall(r"(?<=\()[^}]+(?=\)\s)", constructor)
             if len(class_constructor_params) < 1: continue
-            possible_indentation = re.search(rf"\s*(?={CONSTRUCTOR})", content)
-            indentation = possible_indentation.group(0) if possible_indentation else ""
+            indentation = get_indentation(rf"\s*(?={CONSTRUCTOR})", content)
             constructor_annot_text = f"\n{indentation}/**\n{indentation}\n{annotate_params(class_constructor_params, indentation)}{indentation}*/\n"
             content = content.replace(constructor, re.sub(r"^[\s\n]*$\n?", "", constructor_annot_text + constructor,
                                                           flags=re.MULTILINE))
-        class_methods: list[str] = re.findall(r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{", ts_class)
-        for class_method in class_methods: content = annotate(class_method, content, METHOD)
+        content = annotate_class_methods(content)
+    return content
+
+
+def annotate_class_methods(content: str) -> str:
+    class_methods: list[str] = re.findall(r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{", content)
+    for class_method in class_methods: content = annotate(class_method, content, METHOD)
     return content
 
 
@@ -297,8 +308,7 @@ def annotate_type(content: str) -> str:
         if not possible_type_name: continue
         type_name = possible_type_name.group(0)
         type_declaration = f"{export_type if f'{export_type} {type_name}' in content else 'type'} {type_name}"
-        possible_indentation = re.search(rf"\s*(?={type_declaration})", content)
-        indentation = possible_indentation.group(0) if possible_indentation else ""
+        indentation = get_indentation(rf"\s*(?={type_declaration})", content)
         old_annotation = find_annotation(possible_type_name.group(0), content, TS_TYPE)
         if old_annotation: content = content.replace(old_annotation, "")
         type_props_list = re.sub(r"[{};]", "", possible_type_props.group(0)).split("\n")
@@ -375,41 +385,60 @@ def process_directory(directory_path, should_annotate_same_file=False):
             process_file(file_path, should_annotate_same_file)
 
 
-parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
-parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
-parser.add_argument('path', help='Путь к директории или файлу TSX/TS.')
-parser.add_argument('-i', '--instant', action='store_true', help='Программа принимает инпут пользователя')
+def main():
+    parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
+    parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
 
-args = parser.parse_args()
-path = args.path
-same_flag = args.same
-instant_flag = args.instant
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-i', '--interactive', action='store_true', help='Интерактивный режим. Работа с пользовательским вводом.')
+    group.add_argument('path', nargs="?", help='Путь к директории или файлу TSX/TS.')
 
-if instant_flag:
-    while True:
-        lines = []
-        say("Введите сущность, которую хотите задокументировать и  нажмите Enter: \n")
+    args = parser.parse_args()
+    path = args.path
+    same_flag = args.same
+    interactive_flag = args.interactive
+
+    if interactive_flag:
         while True:
-            line = input()
-            if not line:
-                break
-            lines.append(line)
-        entity = '\n'.join(lines)
-        say("Вы ввели: \n", entity)
-        new_content = run_pipeline("\n\n" + entity + "\n\n")
-        say('\n\n-----RESULT-----\n\n')
-        say(new_content)
-        say('\n\n-----END-----\n\n')
-        say('Спасибо!\n')
-        entity = ""
+            lines = []
+            say("Введите сущность, документацию к которой вы хотели бы сгенерировать, нажмите Enter и затем Ctrl-D или Ctrl-Z (windows): \n")
+            while True:
+                try:
+                    line = input()
+                except EOFError:
+                    break
+                lines.append(line)
+            user_input = '\n'.join(lines)
+            say("\nВы ввели: \n", user_input, "\n")
+            if "type" in user_input:
+                new_content = annotate_type(user_input)
+            elif "JSX.Element" in user_input:
+                new_content = annotate_component(user_input)
+            elif "class" in user_input:
+                new_content = annotate_class(user_input)
+            elif "function" in user_input:
+                new_content = annotate_functions_and_lambdas(user_input)
+            elif "const" in user_input and "=>" in user_input:
+                new_content = annotate_functions_and_lambdas(user_input)
+            else:
+                new_content = annotate_class_methods(user_input)
+            say('\n\n-----НАЧАЛО АННОТАЦИИ-----\n\n')
+            say(new_content)
+            say('\n\n-----КОНЕЦ  АННОТАЦИИ-----\n\n')
+            say('Спасибо!\n')
 
-if os.path.isdir(path):
-    process_directory(path, same_flag)
-elif os.path.isfile(path):
-    process_file(path, same_flag)
-else:
-    say(f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
+    if not path:
+        return say("Недостаточно аргументов! Вызовите скрипт с флагом -h для подсказки.")
 
+    if os.path.isdir(path):
+        process_directory(path, same_flag)
+    elif os.path.isfile(path):
+        process_file(path, same_flag)
+    else:
+        say(f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
+
+
+main()
 # TODO: enums
 # TODO: generics в типах
 # TODO: interfaces
