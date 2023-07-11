@@ -307,7 +307,8 @@ def annotate_type(content: str) -> str:
         type_intersections = re.findall(r"\w+(?=\s&)", whole_ts_type)
         intersections_annotated = add_annot_intersection_types(type_intersections)
         possible_annotation_description = find_annotation_description(old_annotation)
-        annotation_description_list = possible_annotation_description.split("\n") if possible_annotation_description else []
+        annotation_description_list = possible_annotation_description.split(
+            "\n") if possible_annotation_description else []
         annotation_description = "".join(list(map(lambda d: f"{indentation} * {d}\n", annotation_description_list)))
         new_annotation = f"/**\n{annotation_description}{types_props_annotated}{intersections_annotated} */\n"
         new_annotation = update_annotation(old_annotation, new_annotation, indentation)
@@ -377,10 +378,30 @@ def process_directory(directory_path, should_annotate_same_file=False):
 parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
 parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
 parser.add_argument('path', help='Путь к директории или файлу TSX/TS.')
+parser.add_argument('-i', '--instant', action='store_true', help='Программа принимает инпут пользователя')
 
 args = parser.parse_args()
 path = args.path
 same_flag = args.same
+instant_flag = args.instant
+
+if instant_flag:
+    while True:
+        lines = []
+        say("Введите сущность, которую хотите задокументировать и  нажмите Enter: \n")
+        while True:
+            line = input()
+            if not line:
+                break
+            lines.append(line)
+        entity = '\n'.join(lines)
+        say("Вы ввели: \n", entity)
+        new_content = run_pipeline("\n\n" + entity + "\n\n")
+        say('\n\n-----RESULT-----\n\n')
+        say(new_content)
+        say('\n\n-----END-----\n\n')
+        say('Спасибо!\n')
+        entity = ""
 
 if os.path.isdir(path):
     process_directory(path, same_flag)
