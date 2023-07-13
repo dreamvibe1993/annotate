@@ -1,4 +1,4 @@
-# 1.11.0
+# 1.11.1
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -164,8 +164,7 @@ def replace_delimiter(entity_with_delimiter: str, content_with_delimiter: str) -
 
 def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_TYPE or LAMBDA) -> str:
     entity, content = replace_modifier_space_with_delimiter(entity, content)
-    indentation = get_indentation(rf"\s+?(?={re.escape(entity)})", content)
-    indentation = re.sub(r"\n", "", indentation) if indentation else ""
+    indentation = get_indentation(rf"^ +(?=\w)", entity)
     old_annotation: str or None = find_annotation(entity, content, typeof_entity)
     if old_annotation: content = content.replace(indentation + old_annotation, "")
     possible_method_description: str or None = find_annotation_description(old_annotation)
@@ -202,15 +201,17 @@ def insert_annotation(new_annotation: str, entity: str, typeof_entity: FUNCTION 
         content = content.replace(entity, new_entity)
         content = re.sub(rf"(\n{re.escape(indentation)}+\n?)+{re.escape(new_entity)}", "\n" + new_entity, content)
     if typeof_entity == METHOD:
-        new_entity = re.sub(r"^(\s)*$\n?", "", new_annotation + indentation + entity)
+        new_entity = re.sub(r"^(\s)*$\n?", "", new_annotation + entity)
+        new_entity = re.sub(r"^\n*", "", new_entity, flags=re.MULTILINE)
         content = content.replace(entity, new_entity)
-        content = re.sub(rf"(\n*{re.escape(indentation)})+\n*{re.escape(new_entity)}", "\n" + new_entity, content)
     return content
 
 
 def annotate_class(content: str) -> str:
     ts_classes: list[str] = re.findall(r"export\sclass\s[A-Z]\w+[^{}]*{[^\r]+}", content)
     for ts_class in ts_classes:
+        ts_class_no_extra_lines = re.sub(r"^[\s\n]+$", "", ts_class, flags=re.MULTILINE)
+        content = content.replace(ts_class, ts_class_no_extra_lines)
         if not bool(re.search(fr"/\*\*.+\*/\n{re.escape(ts_class)}", content, flags=re.DOTALL)):
             content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
         class_constructor = re.search(r"[^\n]+constructor\([^}]*\)\s{[^}]*}", ts_class)
@@ -223,11 +224,19 @@ def annotate_class(content: str) -> str:
             content = content.replace(constructor, re.sub(r"^[\s\n]*$\n?", "", constructor_annot_text + constructor,
                                                           flags=re.MULTILINE))
         content = annotate_class_methods(content)
+    ts_classes: list[str] = re.findall(r"export\sclass\s[A-Z]\w+[^{}]*{[^\r]+}", content)
+    # TODO: Fix this mess vvv
+    for ts_class in ts_classes:
+        ts_class_no_extra_lines = re.sub(r"^[\s\n]+$", "", ts_class, flags=re.MULTILINE)
+        content = content.replace(ts_class, ts_class_no_extra_lines)
+        if not bool(re.search(fr"/\*\*.+\*/\n{re.escape(ts_class)}", content, flags=re.DOTALL)):
+            content = content.replace(ts_class, "/** Описание класса */\n" + ts_class)
+    # ------------------------
     return content
 
 
 def annotate_class_methods(content: str) -> str:
-    class_methods: list[str] = re.findall(r"\w+\s?\w+.*\([^}]*\):[^=\n]*?{", content)
+    class_methods: list[str] = re.findall(r" *?\w+\s?\w+.*\([^}]*\):[^=\n]*?{", content)
     for class_method in class_methods: content = annotate(class_method, content, METHOD)
     return content
 
@@ -390,7 +399,8 @@ def main():
     parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-i', '--interactive', action='store_true', help='Интерактивный режим. Работа с пользовательским вводом.')
+    group.add_argument('-i', '--interactive', action='store_true',
+                       help='Интерактивный режим. Работа с пользовательским вводом.')
     group.add_argument('path', nargs="?", help='Путь к директории или файлу TSX/TS.')
 
     args = parser.parse_args()
