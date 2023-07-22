@@ -30,9 +30,9 @@ changePage(event: unknown, page: number): void {
     ```
 + ### Не добавлять типы в аннотацию.
     ```bash
-      > python ./annotate.py -T ~/path_to_ts_or_tsx_file.(tsx|ts)
+      python ./annotate.py -T ~/path_to_ts_or_tsx_file.(tsx|ts)
     ```
-    ```
+    ```js
     // Результат:
   
     /**
