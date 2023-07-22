@@ -1,4 +1,4 @@
-# 1.11.2
+# 1.12.0
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -33,8 +33,9 @@ def get_type_and_name(pat: Dict[str, str], string_from: str) -> Union[str or Non
         return [None, None, False]
 
 
-def get_parameter_injected(param_type: str, param_name: str, indentation: str) -> str:
-    return f"{indentation} * @param {{{param_type}}} {param_name} -\n"
+def get_parameter_injected(typeof_entity: str, param_type: str, param_name: str, indentation: str) -> str:
+    if ignore_types_flag: return f"{indentation} * @{typeof_entity} {param_name} -\n"
+    return f"{indentation} * @{typeof_entity} {{{param_type}}} {param_name} -\n"
 
 
 def annotate_params(method_params: "list[str]", indentation: str) -> str:
@@ -43,7 +44,7 @@ def annotate_params(method_params: "list[str]", indentation: str) -> str:
         for func_type in re.findall(r'\w+:\s\([^/]*?\)\s=>\s[\w<>\[\]]+\n?', line_of_methods_params):
             parameter_of_func_type = re.sub(r":\s\(", delimiter_letters + "(", func_type)
             func_param_name, func_param_type = parameter_of_func_type.split(delimiter_letters)
-            params_text += get_parameter_injected(func_param_type, func_param_name, indentation)
+            params_text += get_parameter_injected("param", func_param_type, func_param_name, indentation)
             line_of_methods_params = line_of_methods_params.replace(func_type, "")
         if "," not in line_of_methods_params:
             type_of_param, name_of_param, name_and_type_found = get_type_and_name({
@@ -51,7 +52,7 @@ def annotate_params(method_params: "list[str]", indentation: str) -> str:
                 "type": method_param_type_pattern
             }, line_of_methods_params)
             if not name_and_type_found: continue
-            params_text += get_parameter_injected(type_of_param, name_of_param, indentation)
+            params_text += get_parameter_injected("param", type_of_param, name_of_param, indentation)
             continue
         for param in line_of_methods_params.split(","):
             type_of_param, name_of_param, name_and_type_found = get_type_and_name({
@@ -63,7 +64,7 @@ def annotate_params(method_params: "list[str]", indentation: str) -> str:
                 type_without_generics = re.sub(r"<\w+>?", "", type_of_param)
                 if type_without_generics + generic not in line_of_methods_params: continue
                 type_of_param = type_without_generics + generic
-            params_text += get_parameter_injected(type_of_param, name_of_param, indentation)
+            params_text += get_parameter_injected("param", type_of_param, name_of_param, indentation)
     return params_text
 
 
@@ -280,7 +281,7 @@ def annotate_type_props(props: "list[str]") -> str:
         prop_parts = prop.split(": ") if not is_functional_type else prop.split(": (")
         prop_name = prop_parts[0]
         prop_type = "(" + prop_parts[1] if is_functional_type else prop_parts[1]
-        annotation = f" * @prop {{{prop_type}}} {prop_name.replace('?', '')} -\n"
+        annotation = get_parameter_injected('prop', prop_type, prop_name.replace('?', ''), "")
         annotation_lines.append(annotation)
     return "".join(annotation_lines)
 
@@ -432,34 +433,48 @@ def run_interactive():
         say('Спасибо!\n')
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
-    parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
+def main(config: Dict[str, str]):
+    interactive = config['interactive']
+    same = config['same']
+    path = config['path']
 
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-i', '--interactive', action='store_true',
-                       help='Интерактивный режим. Работа с пользовательским вводом.')
-    group.add_argument('path', nargs="?", help='Путь к директории или файлу TSX/TS.')
-
-    args = parser.parse_args()
-    path = args.path
-    same_flag = args.same
-    interactive_flag = args.interactive
-
-    if interactive_flag: run_interactive()
+    if interactive: run_interactive()
 
     if not path:
         return say("Недостаточно аргументов! Вызовите скрипт с флагом -h для подсказки.")
 
     if os.path.isdir(path):
-        process_directory(path, same_flag)
+        process_directory(path, same)
     elif os.path.isfile(path):
-        process_file(path, same_flag)
+        process_file(path, same)
     else:
         say(f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
 
-main()
+parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
+parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
+parser.add_argument('-T', '--ignore_types', action='store_true', help="Не добавлять типы в аннотацию.")
+
+group = parser.add_mutually_exclusive_group()
+group.add_argument('-i', '--interactive', action='store_true',
+                   help='Интерактивный режим. Работа с пользовательским вводом.')
+group.add_argument('path', nargs="?", help='Путь к директории или файлу TSX/TS.')
+
+args = parser.parse_args()
+path_argument = args.path
+same_flag = args.same
+interactive_flag = args.interactive
+ignore_types_flag = args.ignore_types
+
+configuration = {
+    "path": path_argument,
+    "same": same_flag,
+    "interactive": interactive_flag,
+    "ignore_types": ignore_types_flag
+}
+
+main(configuration)
+
 # TODO: enums
 # TODO: generics в типах
 # TODO: interfaces
