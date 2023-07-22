@@ -1,4 +1,4 @@
-# 1.11.1
+# 1.11.2
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -394,6 +394,44 @@ def process_directory(directory_path, should_annotate_same_file=False):
             process_file(file_path, should_annotate_same_file)
 
 
+def process_user_input(user_input: str) -> str:
+    possible_first_line = re.search(r"^ *\w+.*(?=\n)", user_input)
+    first_line = user_input
+    if possible_first_line: first_line = possible_first_line.group(0)
+    if "type" in first_line:
+        new_content = annotate_type(user_input)
+    elif "JSX.Element" in first_line:
+        new_content = annotate_component(user_input)
+    elif "class" in first_line:
+        new_content = annotate_class(user_input)
+    elif "function" in first_line:
+        new_content = annotate_functions_and_lambdas(user_input)
+    elif "const" in first_line and "=>" in first_line:
+        new_content = annotate_functions_and_lambdas(user_input)
+    else:
+        new_content = annotate_class_methods(user_input)
+    return new_content
+
+
+def run_interactive():
+    while True:
+        lines = []
+        say("Введите сущность, документацию к которой вы хотели бы сгенерировать, нажмите Enter и затем Ctrl-D или Ctrl-Z (windows): \n")
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            lines.append(line)
+        user_input = '\n'.join(lines)
+        say("\nВы ввели: \n", user_input, "\n")
+        new_content = process_user_input(user_input)
+        say('\n\n-----НАЧАЛО АННОТАЦИИ-----\n\n')
+        say(new_content)
+        say('\n\n-----КОНЕЦ  АННОТАЦИИ-----\n\n')
+        say('Спасибо!\n')
+
+
 def main():
     parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
     parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
@@ -408,34 +446,7 @@ def main():
     same_flag = args.same
     interactive_flag = args.interactive
 
-    if interactive_flag:
-        while True:
-            lines = []
-            say("Введите сущность, документацию к которой вы хотели бы сгенерировать, нажмите Enter и затем Ctrl-D или Ctrl-Z (windows): \n")
-            while True:
-                try:
-                    line = input()
-                except EOFError:
-                    break
-                lines.append(line)
-            user_input = '\n'.join(lines)
-            say("\nВы ввели: \n", user_input, "\n")
-            if "type" in user_input:
-                new_content = annotate_type(user_input)
-            elif "JSX.Element" in user_input:
-                new_content = annotate_component(user_input)
-            elif "class" in user_input:
-                new_content = annotate_class(user_input)
-            elif "function" in user_input:
-                new_content = annotate_functions_and_lambdas(user_input)
-            elif "const" in user_input and "=>" in user_input:
-                new_content = annotate_functions_and_lambdas(user_input)
-            else:
-                new_content = annotate_class_methods(user_input)
-            say('\n\n-----НАЧАЛО АННОТАЦИИ-----\n\n')
-            say(new_content)
-            say('\n\n-----КОНЕЦ  АННОТАЦИИ-----\n\n')
-            say('Спасибо!\n')
+    if interactive_flag: run_interactive()
 
     if not path:
         return say("Недостаточно аргументов! Вызовите скрипт с флагом -h для подсказки.")
