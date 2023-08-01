@@ -32,7 +32,6 @@ MANIFEST
 *.manifest
 *.spec
 utils
-__init__*
 
 # Installer logs
 pip-log.txt

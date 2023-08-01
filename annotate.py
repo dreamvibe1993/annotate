@@ -1,4 +1,4 @@
-# 1.12.0
+# 1.12.1
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -6,7 +6,7 @@ import os
 import argparse
 from typing import Dict, Union, Tuple
 
-method_param_type_pattern = r"(?<=:\s).+"
+method_param_type_pattern = r"(?<=:\s).*"
 method_param_name_pattern = r"[\w?]+(?=:)"
 
 modifiers = ['get', 'set', 'async', 'private', 'protected', 'abstract']
@@ -25,7 +25,7 @@ say = print
 
 
 def get_type_and_name(pat: Dict[str, str], string_from: str) -> Union[str or None, str or None, bool]:
-    param_type = re.findall(pat["type"], string_from)
+    param_type = re.findall(pat["type"], string_from, flags=re.DOTALL)
     param_name = re.findall(pat["name"], string_from)
     if len(param_type) > 0 and len(param_name) > 0:
         return [param_type[0], param_name[0].replace('?', ''), True]
@@ -171,6 +171,9 @@ def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_
     possible_method_description: str or None = find_annotation_description(old_annotation)
     method_description = possible_method_description or get_default_description(typeof_entity)
     method_params = re.findall(r"(?<=\()[^};]+?(?=\):)", entity)
+    # Эта чепуха нужна, чтобы детектить параметры функций и методов без типов!---------------|
+    if len(method_params) < 1: method_params = re.findall(r"(?<=\()[^};]+?(?=\):?)", entity)
+    # ---------------------------------------------------------------------------------------|
     annotated_method_params = annotate_params(method_params, indentation)
     new_annotation = f"\n{indentation}/**\n{indentation} * {method_description}\n{annotated_method_params}{indentation} */\n"
     new_annotation = update_annotation(old_annotation, new_annotation, indentation)
@@ -243,7 +246,7 @@ def annotate_class_methods(content: str) -> str:
 
 
 def annotate_functions_and_lambdas(content: str) -> str:
-    lambdas: list[str] = re.findall(r"const\s\w+\s=\s\([^/]*?\).+?\s=>\s{", content)
+    lambdas: list[str] = re.findall(r"const \w+ = \([^/]*?\).*? => {", content)
     functions: list[str] = re.findall(r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{", content)
     lambdas_and_functions: list[str] = lambdas + functions
     for entity in lambdas_and_functions:
