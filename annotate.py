@@ -1,4 +1,4 @@
-# 1.12.1
+# 1.12.2
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -172,7 +172,7 @@ def annotate(entity: str, content: str, typeof_entity: FUNCTION or METHOD or TS_
     method_description = possible_method_description or get_default_description(typeof_entity)
     method_params = re.findall(r"(?<=\()[^};]+?(?=\):)", entity)
     # Эта чепуха нужна, чтобы детектить параметры функций и методов без типов!---------------|
-    if len(method_params) < 1: method_params = re.findall(r"(?<=\()[^};]+?(?=\):?)", entity)
+    if len(method_params) < 1: method_params = re.findall(r"(?<=\()[^};]+?(?=\)):?", entity)
     # ---------------------------------------------------------------------------------------|
     annotated_method_params = annotate_params(method_params, indentation)
     new_annotation = f"\n{indentation}/**\n{indentation} * {method_description}\n{annotated_method_params}{indentation} */\n"
@@ -241,13 +241,17 @@ def annotate_class(content: str) -> str:
 
 def annotate_class_methods(content: str) -> str:
     class_methods: list[str] = re.findall(r" *?\w+\s?\w+.*\([^}]*\):[^=\n]*?{", content)
+    if len(class_methods) < 1:
+        class_methods += re.findall(r" *?\w+\s?\w+.*\([^}]*\) *?{", content)
+        for method in class_methods:
+            if CONSTRUCTOR in method: class_methods.remove(method)
     for class_method in class_methods: content = annotate(class_method, content, METHOD)
     return content
 
 
 def annotate_functions_and_lambdas(content: str) -> str:
     lambdas: list[str] = re.findall(r"const \w+ = \([^/]*?\).*? => {", content)
-    functions: list[str] = re.findall(r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):[^=\n]*?{", content)
+    functions: list[str] = re.findall(r"function\s\w+[<\w\s>,&|()=:]*\([^}]*\):?[^=\n]*?{", content)
     lambdas_and_functions: list[str] = lambdas + functions
     for entity in lambdas_and_functions:
         replacement_candidate: str = f"export {entity}" if f"export {entity}" in content else entity
@@ -399,9 +403,14 @@ def process_directory(directory_path, should_annotate_same_file=False):
 
 
 def process_user_input(user_input: str) -> str:
-    possible_first_line = re.search(r"^ *\w+.*(?=\n)", user_input)
     first_line = user_input
-    if possible_first_line: first_line = possible_first_line.group(0)
+    user_input_lines = user_input.splitlines()
+    if len(user_input_lines) > 0: first_line = user_input_lines[0]
+    if len(first_line.strip()) == 0:
+        for line in user_input_lines:
+            if len(line) > 1:
+                first_line = line
+                break
     if "type" in first_line:
         new_content = annotate_type(user_input)
     elif "JSX.Element" in first_line:
