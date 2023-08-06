@@ -1,4 +1,4 @@
-# 1.12.2
+# 1.13.0
 # https://github.com/dreamvibe1993/annotate
 
 import re
@@ -355,20 +355,10 @@ def parse_file(file_path: str) -> str:
         say(f"Произошла ошибка при обработке файла '{file_path}': {str(e)}")
 
 
-def handle_finish(content, file_path, should_annotate_same_file=False):
-    if should_annotate_same_file:
-        with open(file_path, 'w') as annotated_file:
-            annotated_file.write(content)
-        say(f"Аннотированный файл сохранен как: {file_path}")
-    else:
-        annotated_file_path = ""
-        if file_path.endswith(".tsx"):
-            annotated_file_path = file_path.replace(".tsx", "_annotated.tsx")
-        elif file_path.endswith(".ts"):
-            annotated_file_path = file_path.replace(".ts", "_annotated.ts")
-        with open(annotated_file_path, 'w') as annotated_file:
-            annotated_file.write(content)
-        say(f"Аннотированный файл сохранен как: {annotated_file_path}")
+def handle_finish(content, file_path):
+    with open(file_path, 'w') as annotated_file:
+        annotated_file.write(content)
+    say(f"Аннотированный файл сохранен как: {file_path}")
 
 
 def run_pipeline(content) -> str:
@@ -383,23 +373,23 @@ def run_pipeline(content) -> str:
     )
 
 
-def process_file(file_path, should_annotate_same_file=False):
+def process_file(file_path):
     try:
         content = parse_file(file_path)
         if content is None: return say("Этот файл пуст!")
         new_content = run_pipeline(content)
-        handle_finish(new_content, file_path, should_annotate_same_file)
+        handle_finish(new_content, file_path)
     except Exception as e:
         say(f"Произошла ошибка при обработке файла '{file_path}': {str(e)}")
 
 
-def process_directory(directory_path, should_annotate_same_file=False):
+def process_directory(directory_path):
     for root, dirs, files in os.walk(directory_path):
         for file in files:
             file_path = os.path.join(root, file)
             if not file_path.endswith((".tsx", ".ts")): return say(
                 "Я умею работать только с файлами формата tsx или ts!")
-            process_file(file_path, should_annotate_same_file)
+            process_file(file_path)
 
 
 def process_user_input(user_input: str) -> str:
@@ -447,7 +437,6 @@ def run_interactive():
 
 def main(config: Dict[str, str]):
     interactive = config['interactive']
-    same = config['same']
     path = config['path']
 
     if interactive: run_interactive()
@@ -456,15 +445,14 @@ def main(config: Dict[str, str]):
         return say("Недостаточно аргументов! Вызовите скрипт с флагом -h для подсказки.")
 
     if os.path.isdir(path):
-        process_directory(path, same)
+        process_directory(path)
     elif os.path.isfile(path):
-        process_file(path, same)
+        process_file(path)
     else:
         say(f"Указанный путь '{path}' не является директорией или файлом TSX/TS.")
 
 
 parser = argparse.ArgumentParser(description='Аннотирование файлов TSX/TS.')
-parser.add_argument('-s', '--same', action='store_true', help='Аннотировать файлы в исходных местоположениях.')
 parser.add_argument('-T', '--ignore_types', action='store_true', help="Не добавлять типы в аннотацию.")
 
 group = parser.add_mutually_exclusive_group()
@@ -474,13 +462,11 @@ group.add_argument('path', nargs="?", help='Путь к директории и�
 
 args = parser.parse_args()
 path_argument = args.path
-same_flag = args.same
 interactive_flag = args.interactive
 ignore_types_flag = args.ignore_types
 
 configuration = {
     "path": path_argument,
-    "same": same_flag,
     "interactive": interactive_flag,
     "ignore_types": ignore_types_flag
 }
@@ -490,3 +476,4 @@ main(configuration)
 # TODO: enums
 # TODO: generics в типах
 # TODO: interfaces
+# TODO: ? = undefined
