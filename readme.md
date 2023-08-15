@@ -5,7 +5,7 @@
 ## Использование
 
 ```bash
- annotate.py [-h] [-s] [-T] [-i | path]
+ annotate.py [-h] [-T] [-i | path]
 ```
 ```js
 // Результат:
@@ -44,10 +44,6 @@ changePage(event: unknown, page: number): void {
         this.page = page;
     }
   ```
-+ ### Перезапись файлов в исходном положении
-    ```bash
-      python ./annotate.py -s ~/path_to_ts_or_tsx_file.(tsx|ts)
-    ```
 + ### Помощь
     ```bash
       python ./annotate.py -h
